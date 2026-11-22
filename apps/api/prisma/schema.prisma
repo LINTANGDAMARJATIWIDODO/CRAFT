@@ -1,0 +1,194 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum TaskStatus {
+  CREATED
+  ACCEPTED
+  IN_PROGRESS
+  SUBMITTED
+  REVISION_REQUESTED
+  APPROVED
+  CANCELLED
+}
+
+model User {
+  id                  String               @id @default(uuid())
+  displayName         String?
+  email               String?              @unique
+  primaryAddress      String?              @unique
+  nonce               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  binanceOAuthAccount BinanceOAuthAccount?
+  wallets             Wallet[]
+  tasks               Task[]
+}
+
+model BinanceOAuthAccount {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider        String   @default("binance")
+  providerSubject String   @unique // OpenID subject returned from official Binance OAuth
+  scopes          String[]
+  linkedAt        DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Wallet {
+  id             String    @id @default(uuid())
+  address        String    @unique
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chainId        Int       @default(56)
+  hasAgentId     Boolean   @default(false)
+  agentIdTokenId String?
+  verifiedAt     DateTime?
+  lastVerifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+}
+
+model Agent {
+  id                  String           @id @default(uuid())
+  name                String
+  slug                String           @unique
+  title               String
+  description         String
+  walletAddress       String           @unique
+  avatarUrl           String?
+  specialties         String[]
+  supportedFormats    String[]
+  verifiedAgentId     Boolean          @default(true)
+  agentIdTokenId      String?
+  tasksCompleted      Int              @default(0)
+  reputationScore     Int              @default(100)
+  avgExecutionTimeSec Int              @default(25)
+  isAvailable         Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  assignments         TaskAssignment[]
+  aiExecutions        AIExecution[]
+}
+
+model Dataset {
+  id            String   @id @default(uuid())
+  fileName      String
+  fileSizeBytes Int
+  rowCount      Int
+  columnCount   Int
+  sha256Hash    String
+  storagePath   String?
+  qualityScore  Int      @default(100)
+  columnsJson   Json
+  createdAt     DateTime @default(now())
+  task          Task?
+}
+
+model Task {
+  id                 String                  @id @default(uuid())
+  onChainTaskId      Int?
+  title              String
+  description        String
+  objective          String
+  status             TaskStatus              @default(CREATED)
+  clientAddress      String
+  userId             String?
+  user               User?                   @relation(fields: [userId], references: [id])
+  datasetId          String?                 @unique
+  dataset            Dataset?                @relation(fields: [datasetId], references: [id])
+  assignments        TaskAssignment[]
+  proofs             TaskProof[]
+  events             TaskEvent[]
+  transactions       BlockchainTransaction[]
+  aiExecutions       AIExecution[]
+  report             Report?
+  revisionReason     String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  acceptedAt         DateTime?
+  startedAt          DateTime?
+  submittedAt        DateTime?
+  approvedAt         DateTime?
+  cancelledAt        DateTime?
+}
+
+model TaskAssignment {
+  id         String   @id @default(uuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentId    String
+  agent      Agent    @relation(fields: [agentId], references: [id])
+  assignedAt DateTime @default(now())
+}
+
+model TaskProof {
+  id                   String   @id @default(uuid())
+  taskId               String
+  task                 Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  datasetHash          String
+  calculationsHash     String
+  reportHash           String
+  compositeProofHash   String
+  submittedBy          String
+  createdAt            DateTime @default(now())
+}
+
+model Report {
+  id                   String   @id @default(uuid())
+  taskId               String   @unique
+  task                 Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  executiveSummary     String
+  datasetOverviewJson  Json
+  keyMetricsJson       Json
+  detailedAnalysisJson Json
+  businessInsightsJson Json
+  recommendationsJson  Json
+  limitationsJson      Json
+  proofHash            String
+  createdAt            DateTime @default(now())
+}
+
+model AIExecution {
+  id                String   @id @default(uuid())
+  taskId            String
+  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentId           String
+  agent             Agent    @relation(fields: [agentId], references: [id])
+  model             String   @default("gemini-1.5-pro")
+  promptTokens      Int?
+  completionTokens  Int?
+  latencyMs         Int
+  status            String   // SUCCESS, FAILED, RETRIED
+  errorMessage      String?
+  executedAt        DateTime @default(now())
+}
+
+model TaskEvent {
+  id        String   @id @default(uuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  eventName String
+  actor     String
+  payload   Json?
+  timestamp DateTime @default(now())
+}
+
+model BlockchainTransaction {
+  id          String   @id @default(uuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  txHash      String   @unique
+  blockNumber Int?
+  chainId     Int      @default(56)
+  fromAddress String
+  toAddress   String
+  status      String   @default("CONFIRMED")
+  gasUsed     Int?
+  timestamp   DateTime @default(now())
+}
