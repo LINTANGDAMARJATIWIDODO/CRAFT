@@ -103,18 +103,42 @@ export default function CreateTaskPage() {
     try {
       const clientAddr = address || '0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db';
 
-      // Create new task in the store
-      const newTask = createTaskRecord({
-        title,
-        description,
-        objective,
-        status: TaskState.Created,
-        clientAddress: clientAddr,
-        assignedAgentId: selectedAgentId,
-        datasetFileName: fileName,
-        datasetRowCount: profilingResult.rowCount,
-        datasetHash: profilingResult.sha256Hash,
-      });
+      let createdRemote: any = null;
+      try {
+        const res = await fetch('http://localhost:4000/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            description,
+            objective,
+            clientAddress: clientAddr,
+            assignedAgentId: selectedAgentId,
+            datasetHash: profilingResult.sha256Hash,
+            fileName,
+            rowCount: profilingResult.rowCount,
+          }),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          createdRemote = d.task;
+        }
+      } catch {}
+
+      // Create / sync task in browser store
+      const newTask = createTaskRecord(
+        createdRemote || {
+          title,
+          description,
+          objective,
+          status: TaskState.Created,
+          clientAddress: clientAddr,
+          assignedAgentId: selectedAgentId,
+          datasetFileName: fileName,
+          datasetRowCount: profilingResult.rowCount,
+          datasetHash: profilingResult.sha256Hash,
+        }
+      );
 
       // Save raw csv in sessionStorage for AI processor
       if (typeof window !== 'undefined') {

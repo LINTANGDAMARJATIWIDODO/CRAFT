@@ -4,30 +4,36 @@ import { HeroSection } from '@/components/landing/HeroSection';
 import { PipelineSection } from '@/components/landing/PipelineSection';
 import { AgentsShowcase } from '@/components/landing/AgentsShowcase';
 import { AgentIdBanner } from '@/components/landing/AgentIdBanner';
+import {
+  LiveNetworkActivitySection,
+  CouncilAndEcosystemSections,
+} from '@/components/landing/EnterpriseSections';
 import { Button } from '@/components/ui/Button';
-import { ArrowRight, ShieldCheck, Database, FileSpreadsheet, Lock } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Database, FileSpreadsheet, Lock, Rocket } from 'lucide-react';
 
 export default function HomePage() {
   return (
     <div className="flex flex-col">
       <HeroSection />
+      <LiveNetworkActivitySection />
       <PipelineSection />
       <AgentsShowcase />
+      <CouncilAndEcosystemSections />
       <AgentIdBanner />
 
-      {/* Verified Execution & Data Privacy Section */}
+      {/* Verified Execution & Security/Trust Section */}
       <section className="py-24 border-t border-subtle bg-charcoal-900/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
               <span className="text-xs font-mono uppercase tracking-wider text-forest-400">
-                Data Privacy & Security
+                Security &amp; Trust Architecture
               </span>
               <h2 className="text-3xl font-bold tracking-tight text-ivory-50 mt-1 mb-4">
                 Confidential Datasets Stay Private. Only Proofs Anchor to BNB Chain.
               </h2>
               <p className="text-sm text-charcoal-300 leading-relaxed mb-6">
-                Uploading internal company metrics to a public blockchain would be a severe security violation. CRAFT enforces strict separation between raw confidential files and on-chain state anchors.
+                Uploading internal financial records to a public blockchain violates enterprise data privacy. CRAFT separates raw confidential datasets from immutable cryptographic SHA-256 verification commitments.
               </p>
 
               <div className="space-y-4">
@@ -36,9 +42,9 @@ export default function HomePage() {
                     <Lock className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-ivory-100">Private Data Vault</h4>
+                    <h4 className="text-sm font-semibold text-ivory-100">Private Data Handling</h4>
                     <p className="text-xs text-charcoal-400">
-                      Raw CSV datasets and full analytical reports are stored in private encrypted storage with short-lived signed URLs.
+                      CSV files are parsed in isolated memory/session storage and never broadcast in clear text on-chain.
                     </p>
                   </div>
                 </div>
@@ -50,7 +56,7 @@ export default function HomePage() {
                   <div>
                     <h4 className="text-sm font-semibold text-ivory-100">Cryptographic State Commitments</h4>
                     <p className="text-xs text-charcoal-400">
-                      Only SHA-256 hashes of the dataset, calculation evidence, and final reports are committed to BNB Chain smart contracts.
+                      Dataset digests, mathematical audit digests, and report hashes bind to verifiable proof commitments.
                     </p>
                   </div>
                 </div>
@@ -60,9 +66,9 @@ export default function HomePage() {
                     <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-ivory-100">Non-Repudiation for Clients & Agents</h4>
+                    <h4 className="text-sm font-semibold text-ivory-100">Human Approval Governance</h4>
                     <p className="text-xs text-charcoal-400">
-                      Once a task is submitted or approved, neither party can alter the output without invalidating the on-chain proof hash.
+                      Clients inspect calculation evidence and request revisions before any task finalizes on TaskRegistry.sol.
                     </p>
                   </div>
                 </div>
@@ -73,7 +79,7 @@ export default function HomePage() {
               <div className="flex items-center justify-between pb-3 border-b border-subtle">
                 <span className="text-ivory-100 font-semibold flex items-center gap-2">
                   <FileSpreadsheet className="w-4 h-4 text-forest-400" />
-                  Proof Generation Specification
+                  Proof Verification Specification
                 </span>
                 <span className="text-forest-400 text-[11px]">SHA-256</span>
               </div>
@@ -84,17 +90,17 @@ export default function HomePage() {
                   <code className="text-forest-300">sha256(raw_csv_bytes)</code>
                 </div>
                 <div>
-                  <span className="text-charcoal-500 block">2. Calculation Audit Digest:</span>
+                  <span className="text-charcoal-500 block">2. Deterministic Calculation Digest:</span>
                   <code className="text-amber-300">sha256(deterministic_metrics_canonical_json)</code>
                 </div>
                 <div>
-                  <span className="text-charcoal-500 block">3. Report Output Digest:</span>
-                  <code className="text-blue-300">sha256(gemini_report_markdown_bytes)</code>
+                  <span className="text-charcoal-500 block">3. Consolidated Report Digest:</span>
+                  <code className="text-blue-300">sha256(structured_report_json)</code>
                 </div>
                 <div className="pt-2 border-t border-subtle">
-                  <span className="text-charcoal-500 block">Final Composite Proof Hash committed to TaskRegistry:</span>
+                  <span className="text-charcoal-500 block">Final Composite Proof Hash:</span>
                   <code className="text-emerald-400 font-bold break-all">
-                    sha256(dataset_hash + calc_hash + report_hash + agent_address)
+                    sha256(dataset_hash + calc_hash + report_hash + agent_id)
                   </code>
                 </div>
               </div>
@@ -107,20 +113,25 @@ export default function HomePage() {
       <section className="py-20 border-t border-subtle bg-gradient-to-b from-charcoal-950 to-forest-950/40 text-center">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-ivory-50">
-            Ready to Delegate Real Work to AI Agents?
+            See Intelligence Into Action in 30 Seconds
           </h2>
           <p className="text-sm sm:text-base text-charcoal-300 max-w-xl mx-auto">
-            Experience verified AI data analysis on BNB Chain with Binance Agent ID authorization.
+            Run a complete end-to-end work mission—from CSV ingestion and Multi-Agent Council auditing to human sign-off and Agent Passport tracking.
           </p>
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link href="/tasks/create">
-              <Button size="lg" variant="primary" rightIcon={<ArrowRight className="w-4 h-4" />}>
-                Create Your First Task
+            <Link href="/mission">
+              <Button
+                size="lg"
+                variant="primary"
+                leftIcon={<Rocket className="w-4 h-4" />}
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+              >
+                Launch CRAFT Live Mission
               </Button>
             </Link>
-            <Link href="/marketplace">
+            <Link href="/trust">
               <Button size="lg" variant="secondary">
-                Browse Marketplace
+                Inspect Trust Center
               </Button>
             </Link>
           </div>

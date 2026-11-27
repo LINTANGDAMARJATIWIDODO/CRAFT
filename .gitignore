@@ -22,6 +22,8 @@ contracts/typechain-types/
 .env.development.local
 .env.test.local
 .env.production.local
+*.craft-state.json
+.craft-state.json
 
 # OS files
 .DS_Store

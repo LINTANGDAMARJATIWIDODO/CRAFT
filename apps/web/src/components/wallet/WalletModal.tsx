@@ -340,7 +340,7 @@ export const WalletModal: React.FC<{ isOpen: boolean; onClose: () => void }> = (
               </div>
 
               {/* Action Buttons: Switch & Disconnect */}
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-subtle">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-subtle">
                 <Button
                   variant="secondary"
                   size="sm"

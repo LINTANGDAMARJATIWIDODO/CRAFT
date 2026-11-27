@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useWallet } from '@/components/wallet/WalletContext';
 import { WalletModal } from '@/components/wallet/WalletModal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { useToast } from '@/components/ui/ToastContext';
 import { truncateAddress, cn } from '@/lib/utils';
 import {
   ShieldCheck,
@@ -15,95 +16,369 @@ import {
   Menu,
   X,
   Layers,
-  Sparkles,
   BarChart3,
   Bot,
   Activity,
   PlusCircle,
   LogIn,
+  ChevronDown,
+  Users,
+  BadgeCheck,
+  Workflow,
+  FileText,
+  Database,
+  SearchCheck,
+  Award,
+  Trophy,
+  Code2,
+  Clock,
+  KeyRound,
+  ScrollText,
+  Bell,
+  Rocket,
 } from 'lucide-react';
+
+interface NavSubItem {
+  href: string;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
+}
+
+interface NavGroup {
+  id: string;
+  label: string;
+  items: NavSubItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    id: 'workspace',
+    label: 'Workspace',
+    items: [
+      {
+        href: '/mission',
+        label: 'CRAFT Live Mission',
+        description: '30s end-to-end Council + Proof interactive demo',
+        icon: Rocket,
+        badge: 'LIVE DEMO',
+      },
+      {
+        href: '/dashboard',
+        label: 'Dashboard',
+        description: 'Operations telemetry & recent workloads',
+        icon: BarChart3,
+      },
+      {
+        href: '/marketplace',
+        label: 'Marketplace',
+        description: 'Browse delegated AI work orders',
+        icon: Layers,
+      },
+      {
+        href: '/tasks/create',
+        label: 'Create Task',
+        description: 'Upload CSV dataset & dispatch an agent',
+        icon: PlusCircle,
+      },
+    ],
+  },
+  {
+    id: 'workforce',
+    label: 'AI Workforce',
+    items: [
+      {
+        href: '/agents',
+        label: 'AI Agents',
+        description: 'Verified agent directory & specializations',
+        icon: Bot,
+      },
+      {
+        href: '/council',
+        label: 'Agent Council',
+        description: 'Multi-agent collaboration & sequential audit',
+        icon: Users,
+      },
+      {
+        href: '/passport',
+        label: 'Agent Passport',
+        description: 'Public identity, credentials & track record',
+        icon: BadgeCheck,
+      },
+    ],
+  },
+  {
+    id: 'intelligence',
+    label: 'Intelligence',
+    items: [
+      {
+        href: '/intelligence',
+        label: 'Data Intelligence',
+        description: 'Dataset profiling & quantitative distribution explorer',
+        icon: Database,
+      },
+      {
+        href: '/reports',
+        label: 'Reports',
+        description: 'Structured analytical deliverables & exports',
+        icon: FileText,
+      },
+      {
+        href: '/studio',
+        label: 'Workflow Studio',
+        description: 'Interactive node-based pipeline builder',
+        icon: Workflow,
+      },
+    ],
+  },
+  {
+    id: 'trust',
+    label: 'Trust Center',
+    items: [
+      {
+        href: '/trust',
+        label: 'Verify Proof',
+        description: 'Public BNB Chain & SHA-256 verification explorer',
+        icon: SearchCheck,
+      },
+      {
+        href: '/reputation',
+        label: 'Agent Reputation',
+        description: 'Anti-Sybil scoring rules & reliability audits',
+        icon: Award,
+      },
+      {
+        href: '/activity',
+        label: 'On-Chain Ledger',
+        description: 'Chronological contract state transitions',
+        icon: Activity,
+      },
+    ],
+  },
+  {
+    id: 'ecosystem',
+    label: 'Ecosystem',
+    items: [
+      {
+        href: '/league',
+        label: 'Global Agent League',
+        description: 'Verified performance rankings & leaderboards',
+        icon: Trophy,
+      },
+      {
+        href: '/developers',
+        label: 'Developer Hub',
+        description: 'REST API, TypeScript SDK, API keys & webhooks',
+        icon: Code2,
+      },
+    ],
+  },
+  {
+    id: 'enterprise',
+    label: 'Enterprise',
+    items: [
+      {
+        href: '/enterprise/jobs',
+        label: 'Recurring Jobs',
+        description: 'Scheduled data pipelines & automation',
+        icon: Clock,
+      },
+      {
+        href: '/enterprise/api',
+        label: 'API Management',
+        description: 'Key rotation, usage telemetry & quotas',
+        icon: KeyRound,
+      },
+      {
+        href: '/enterprise/audit',
+        label: 'Audit Logs',
+        description: 'Immutable auth, proof & approval logs',
+        icon: ScrollText,
+      },
+    ],
+  },
+];
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
-  const { isConnected, address, hasAgentId, isCorrectNetwork, isBinanceLoggedIn } = useWallet();
+  const { isConnected, address, hasAgentId, isBinanceLoggedIn } = useWallet();
+  const { notifications, unreadCount, markAllRead } = useToast();
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
-  const navLinks = [
-    { href: '/marketplace', label: 'Marketplace', icon: Layers },
-    { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
-    { href: '/tasks/create', label: 'Create Task', icon: PlusCircle },
-    { href: '/agents', label: 'AI Agents', icon: Bot },
-    { href: '/activity', label: 'On-Chain Ledger', icon: Activity },
-  ];
+  const navContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (navContainerRef.current && !navContainerRef.current.contains(e.target as Node)) {
+        setOpenDropdown(null);
+        setIsNotificationsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setOpenDropdown(null);
+    setIsMobileMenuOpen(false);
+    setIsNotificationsOpen(false);
+  }, [pathname]);
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full border-b border-subtle bg-charcoal-950/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          {/* Logo & Brand Identity */}
-          <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-3 group">
+      <header
+        ref={navContainerRef}
+        className="sticky top-0 z-40 w-full border-b border-subtle bg-charcoal-950/90 backdrop-blur-md"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+          {/* Logo + Grouped Dropdown Navigation */}
+          <div className="flex items-center gap-4">
+            <Link href="/" className="flex items-center gap-2.5 group shrink-0">
               <div className="w-9 h-9 rounded-xl bg-forest-900 border border-forest-600/40 flex items-center justify-center text-ivory-50 font-bold tracking-tight shadow-sm group-hover:border-forest-500/60 transition-colors">
                 <span className="font-mono text-base">C</span>
               </div>
               <div className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-bold tracking-tight text-ivory-50">CRAFT</span>
-                  <span className="hidden sm:inline-flex text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-forest-950/80 text-forest-300 border border-forest-700/40">
-                    Agent ID
+                <div className="flex items-center gap-1.5">
+                  <span className="text-base font-bold tracking-tight text-ivory-50">CRAFT</span>
+                  <span className="hidden xl:inline-flex text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-forest-950/80 text-forest-300 border border-forest-700/40">
+                    Enterprise
                   </span>
                 </div>
-                <span className="text-[10px] tracking-wide text-charcoal-400 font-mono hidden md:block">
+                <span className="text-[10px] tracking-wide text-charcoal-400 font-mono hidden 2xl:block">
                   Intelligence Into Action.
                 </span>
               </div>
             </Link>
 
-            {/* Desktop Navigation Links */}
-            <nav className="hidden lg:flex items-center gap-1 ml-4">
-              {navLinks.map((link) => {
-                const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
-                const Icon = link.icon;
+            {/* Desktop Grouped Dropdown Menus */}
+            <nav className="hidden lg:flex items-center gap-0.5 ml-2" aria-label="Main navigation">
+              {NAV_GROUPS.map((group) => {
+                const isGroupActive = group.items.some(
+                  (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
+                );
+                const isOpen = openDropdown === group.id;
+
                 return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                      isActive
-                        ? 'bg-charcoal-850 text-ivory-50 border border-subtle'
-                        : 'text-charcoal-300 hover:text-ivory-100 hover:bg-charcoal-900'
+                  <div key={group.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setOpenDropdown(isOpen ? null : group.id)}
+                      aria-expanded={isOpen}
+                      className={cn(
+                        'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap',
+                        isOpen || isGroupActive
+                          ? 'bg-charcoal-850 text-ivory-50 border border-subtle'
+                          : 'text-charcoal-300 hover:text-ivory-100 hover:bg-charcoal-900 border border-transparent'
+                      )}
+                    >
+                      <span>{group.label}</span>
+                      <ChevronDown
+                        className={cn('w-3 h-3 text-charcoal-400 transition-transform', isOpen && 'rotate-180')}
+                      />
+                    </button>
+
+                    {isOpen && (
+                      <div className="absolute left-0 mt-2 w-72 rounded-xl bg-charcoal-900 border border-refined shadow-elevated p-2 z-50 space-y-1">
+                        {group.items.map((item) => {
+                          const Icon = item.icon;
+                          const itemActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                          return (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              className={cn(
+                                'flex items-start gap-3 p-2.5 rounded-lg transition-colors group/item',
+                                itemActive
+                                  ? 'bg-forest-950/60 border border-forest-700/40 text-ivory-50'
+                                  : 'hover:bg-charcoal-850 border border-transparent text-charcoal-300'
+                              )}
+                            >
+                              <div className="w-7 h-7 rounded-md bg-charcoal-950 border border-subtle flex items-center justify-center text-forest-400 shrink-0 mt-0.5 group-hover/item:border-forest-600/40">
+                                <Icon className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold text-ivory-100">{item.label}</span>
+                                  {item.badge && (
+                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-700/40">
+                                      {item.badge}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-charcoal-400 leading-snug mt-0.5">
+                                  {item.description}
+                                </p>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
                     )}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span>{link.label}</span>
-                  </Link>
+                  </div>
                 );
               })}
             </nav>
           </div>
 
-          {/* Right Action: Network & Wallet / Login */}
-          <div className="flex items-center gap-2.5">
-            {/* Network Pill */}
-            <div className="hidden sm:flex items-center">
+          {/* Right Action: Notifications, Network & Wallet */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="hidden xl:flex items-center">
               <Badge variant="bnb" size="sm" dot>
                 BNB Chain
               </Badge>
             </div>
 
-            {/* Binance OAuth Badge if logged in */}
-            {isBinanceLoggedIn && (
-              <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded-lg bg-[#F3BA2F]/10 text-[#F3BA2F] border border-[#F3BA2F]/30">
-                Binance Linked
-              </span>
-            )}
+            {/* Notifications Bell */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isNotificationsOpen;
+                  setIsNotificationsOpen(next);
+                  setOpenDropdown(null);
+                  if (next) markAllRead();
+                }}
+                aria-label="Notifications"
+                className="relative p-2 rounded-lg bg-charcoal-900 hover:bg-charcoal-850 border border-subtle text-charcoal-300 hover:text-ivory-100 transition-colors"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-forest-500 text-ivory-50 text-[10px] font-mono flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
 
-            {/* Auth / Wallet Button */}
+              {isNotificationsOpen && (
+                <div className="fixed sm:absolute right-4 sm:right-0 left-4 sm:left-auto top-16 sm:top-auto sm:mt-2 sm:w-80 rounded-xl bg-charcoal-900 border border-refined shadow-elevated p-3 z-50 space-y-2">
+                  <div className="flex items-center justify-between pb-2 border-b border-subtle">
+                    <span className="text-xs font-semibold text-ivory-100">System Notifications</span>
+                    <span className="text-[10px] font-mono text-charcoal-400">
+                      {notifications.length} event(s)
+                    </span>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-1.5">
+                    {notifications.map((n) => (
+                      <div key={n.id} className="p-2 rounded-lg bg-charcoal-950/70 border border-subtle text-xs">
+                        <p className="font-medium text-ivory-100">{n.title}</p>
+                        {n.description && (
+                          <p className="text-[11px] text-charcoal-400 mt-0.5 leading-snug">{n.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Wallet / Sign In */}
             {!isConnected && !isBinanceLoggedIn ? (
               <div className="flex items-center gap-2">
-                <Link href="/login">
+                <Link href="/login" className="hidden sm:block">
                   <Button variant="secondary" size="sm" leftIcon={<LogIn className="w-3.5 h-3.5" />}>
                     Sign In
                   </Button>
@@ -152,48 +427,60 @@ export const Navbar: React.FC = () => {
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="lg:hidden p-2 rounded-lg text-charcoal-400 hover:text-ivory-100 hover:bg-charcoal-850"
+              aria-label="Toggle mobile menu"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
 
-        {/* Mobile Navigation Dropdown */}
+        {/* Mobile Drawer */}
         {isMobileMenuOpen && (
-          <div className="lg:hidden border-b border-subtle bg-charcoal-900 px-4 pt-2 pb-4 space-y-1">
-            <Link
-              href="/login"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-ivory-100 bg-charcoal-800 mb-2"
-            >
-              <LogIn className="w-4 h-4 text-forest-400" />
-              <span>Authentication (Binance &amp; Web3)</span>
-            </Link>
-            {navLinks.map((link) => {
-              const isActive = pathname === link.href;
-              const Icon = link.icon;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={cn(
-                    'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-charcoal-800 text-ivory-50'
-                      : 'text-charcoal-300 hover:text-ivory-100 hover:bg-charcoal-850'
-                  )}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{link.label}</span>
+          <div className="lg:hidden border-t border-subtle bg-charcoal-950 max-h-[calc(100vh-4rem)] overflow-y-auto px-4 py-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-subtle">
+              <Badge variant="bnb" size="sm" dot>
+                BNB Chain
+              </Badge>
+              {!isConnected && !isBinanceLoggedIn && (
+                <Link href="/login">
+                  <Button variant="secondary" size="sm" leftIcon={<LogIn className="w-3.5 h-3.5" />}>
+                    Sign In
+                  </Button>
                 </Link>
-              );
-            })}
+              )}
+            </div>
+            {NAV_GROUPS.map((group) => (
+              <div key={group.id} className="space-y-1.5">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-charcoal-400 px-2">
+                  {group.label}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const active = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          'flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs border transition-colors',
+                          active
+                            ? 'bg-forest-950/50 border-forest-700/40 text-ivory-50'
+                            : 'bg-charcoal-900/60 border-subtle text-charcoal-300'
+                        )}
+                      >
+                        <Icon className="w-3.5 h-3.5 text-forest-400 shrink-0" />
+                        <span className="font-medium">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </header>
 
-      {/* Wallet Management Modal */}
       <WalletModal isOpen={isWalletModalOpen} onClose={() => setIsWalletModalOpen(false)} />
     </>
   );

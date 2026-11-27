@@ -1,27 +1,24 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { INITIAL_AGENTS, OFFICIAL_AGENT_ID_CONTRACT } from '@/lib/constants';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { fetchAgentsUnified } from '@/lib/craft-client';
+import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { truncateAddress } from '@/lib/utils';
-import {
-  ShieldCheck,
-  Bot,
-  ExternalLink,
-  PlusCircle,
-  Cpu,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-} from 'lucide-react';
+import { AgentProfile } from '@craft/shared';
+import { ExternalLink, PlusCircle, BadgeCheck, ShieldCheck } from 'lucide-react';
 
 export default function AgentsPage() {
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
+
+  useEffect(() => {
+    fetchAgentsUnified().then((res) => setAgents(res.agents));
+  }, []);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-subtle">
         <div>
           <div className="flex items-center gap-2">
@@ -29,26 +26,31 @@ export default function AgentsPage() {
               Autonomous AI Agent Workforce
             </h1>
             <Badge variant="success" size="sm">
-              Verified BEP-721
+              Binance Agent ID Gated
             </Badge>
           </div>
           <p className="text-sm text-charcoal-400 mt-1">
-            Registered AI agents authenticated through Binance Agent ID tokens on BNB Smart Chain.
+            Registered specialized agents with verified CRAFT Passports and BEP-721 identity gates on BNB Smart Chain.
           </p>
         </div>
-        <Link href="/tasks/create">
-          <Button variant="primary" size="sm" leftIcon={<PlusCircle className="w-3.5 h-3.5" />}>
-            Assign Work to Agent
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/council">
+            <Button variant="secondary" size="sm">
+              Open Agent Council
+            </Button>
+          </Link>
+          <Link href="/tasks/create">
+            <Button variant="primary" size="sm" leftIcon={<PlusCircle className="w-3.5 h-3.5" />}>
+              Assign Work to Agent
+            </Button>
+          </Link>
+        </div>
       </div>
 
-      {/* Agents Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {INITIAL_AGENTS.map((agent) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {agents.map((agent) => (
           <Card key={agent.id} hoverEffect className="bg-charcoal-900 border-subtle flex flex-col justify-between p-6">
             <div>
-              {/* Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <img
@@ -63,11 +65,8 @@ export default function AgentsPage() {
                 </div>
               </div>
 
-              <p className="text-xs text-charcoal-300 leading-relaxed mb-5">
-                {agent.description}
-              </p>
+              <p className="text-xs text-charcoal-300 leading-relaxed mb-5">{agent.description}</p>
 
-              {/* Specialties */}
               <div className="space-y-2 mb-6">
                 <span className="text-[11px] font-mono uppercase tracking-wider text-charcoal-400 block">
                   Core Specialties
@@ -85,7 +84,6 @@ export default function AgentsPage() {
               </div>
             </div>
 
-            {/* Performance Telemetry */}
             <div className="pt-4 border-t border-subtle space-y-3 font-mono text-xs">
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-2.5 bg-charcoal-950 rounded-lg border border-subtle">
@@ -104,8 +102,10 @@ export default function AgentsPage() {
 
               <div className="p-3 bg-charcoal-950 rounded-lg border border-subtle space-y-1 text-[11px]">
                 <div className="flex justify-between">
-                  <span className="text-charcoal-400">Agent ID Token:</span>
-                  <span className="text-emerald-400 font-bold">#{agent.agentIdTokenId} (BEP-721)</span>
+                  <span className="text-charcoal-400">Credential Slot:</span>
+                  <span className="text-emerald-400 font-bold flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3" /> {agent.craftCredentials?.tier || 'Verified'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-charcoal-400">Wallet:</span>
@@ -120,11 +120,18 @@ export default function AgentsPage() {
                 </div>
               </div>
 
-              <Link href="/tasks/create" className="block pt-1">
-                <Button variant="secondary" size="sm" className="w-full">
-                  Delegate Work Order
-                </Button>
-              </Link>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Link href={`/passport/${agent.slug}`}>
+                  <Button variant="outline" size="sm" className="w-full" leftIcon={<BadgeCheck className="w-3.5 h-3.5" />}>
+                    Passport
+                  </Button>
+                </Link>
+                <Link href="/tasks/create">
+                  <Button variant="secondary" size="sm" className="w-full">
+                    Delegate
+                  </Button>
+                </Link>
+              </div>
             </div>
           </Card>
         ))}

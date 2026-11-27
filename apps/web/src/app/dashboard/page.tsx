@@ -3,13 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useWallet } from '@/components/wallet/WalletContext';
-import { getStoredTasks } from '@/lib/task-store';
-import { TaskRecord, TaskState } from '@craft/shared';
+import { fetchTasksUnified, fetchAgentsUnified } from '@/lib/craft-client';
+import { TaskRecord, TaskState, AgentProfile } from '@craft/shared';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge, TaskStateBadge } from '@/components/ui/Badge';
 import { truncateAddress, formatTimestamp } from '@/lib/utils';
-import { INITIAL_AGENTS } from '@/lib/constants';
 import {
   Layers,
   Clock,
@@ -17,24 +16,28 @@ import {
   AlertCircle,
   PlusCircle,
   ArrowRight,
-  ShieldCheck,
   ShieldAlert,
   Bot,
   Activity,
   FileSpreadsheet,
   ExternalLink,
   RefreshCw,
+  Rocket,
 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { isConnected, address, hasAgentId, agentIdTokenId } = useWallet();
+  const { isConnected, hasAgentId } = useWallet();
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [apiConnected, setApiConnected] = useState(false);
 
-  const loadData = () => {
+  const loadData = async () => {
     setIsLoading(true);
-    const data = getStoredTasks();
-    setTasks(data);
+    const [tRes, aRes] = await Promise.all([fetchTasksUnified(), fetchAgentsUnified()]);
+    setTasks(tRes.tasks);
+    setAgents(aRes.agents);
+    setApiConnected(tRes.apiConnected);
     setIsLoading(false);
   };
 
@@ -42,7 +45,6 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
-  // Compute real statistics from actual stored tasks
   const totalTasks = tasks.length;
   const activeTasks = tasks.filter(
     (t) => t.status === TaskState.Created || t.status === TaskState.Accepted || t.status === TaskState.InProgress
@@ -54,23 +56,22 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Top Banner & Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-subtle">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ivory-50">
               Operations Dashboard
             </h1>
-            <Badge variant="bnb" size="sm">
-              BNB Chain Live
+            <Badge variant={apiConnected ? 'success' : 'bnb'} size="sm">
+              {apiConnected ? 'Enterprise API Synced' : 'Local Deterministic Store'}
             </Badge>
           </div>
           <p className="text-sm text-charcoal-400 mt-1">
-            Real-time telemetry on delegated AI workloads, proof verification, and on-chain status transitions.
+            Real-time telemetry on delegated AI workloads, proof digests, and Agent Passport status.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Button
             variant="outline"
             size="sm"
@@ -79,31 +80,31 @@ export default function DashboardPage() {
           >
             Refresh
           </Button>
+          <Link href="/mission">
+            <Button variant="secondary" size="sm" leftIcon={<Rocket className="w-3.5 h-3.5 text-emerald-400" />}>
+              30s Live Mission
+            </Button>
+          </Link>
           <Link href="/tasks/create">
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<PlusCircle className="w-3.5 h-3.5" />}
-            >
+            <Button variant="primary" size="sm" leftIcon={<PlusCircle className="w-3.5 h-3.5" />}>
               New Analysis Task
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* Identity & Gate Warning if Wallet Not Connected or No Agent ID */}
       {(!isConnected || !hasAgentId) && (
         <div className="p-4 rounded-xl border border-amber-800/40 bg-amber-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5">
             <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
               <span className="font-semibold text-ivory-100 block">
-                {!isConnected ? 'Wallet Not Connected' : 'Binance Agent ID Token Required'}
+                {!isConnected ? 'Wallet Not Connected' : 'Binance Agent ID Token Required for Protected Contract Ops'}
               </span>
               <span className="text-charcoal-400">
                 {!isConnected
-                  ? 'Connect your Web3 wallet to authorize protected smart contract actions.'
-                  : 'An official Binance Agent ID BEP-721 token is required to create and approve tasks.'}
+                  ? 'Connect your Web3 wallet to authorize cryptographic client sign-offs.'
+                  : 'An official Binance Agent ID BEP-721 token is required for protected on-chain TaskRegistry transitions.'}
               </span>
             </div>
           </div>
@@ -117,27 +118,23 @@ export default function DashboardPage() {
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Tasks */}
         <Card className="bg-charcoal-900/70 border-subtle">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-charcoal-400 uppercase">Total Tasks</span>
-            <div className="w-7 h-7 rounded-lg bg-charcoal-800 flex items-center justify-center text-charcoal-300">
-              <Layers className="w-3.5 h-3.5" />
-            </div>
+            <Layers className="w-4 h-4 text-charcoal-300" />
           </div>
           <div className="mt-3">
             <span className="text-2xl font-bold font-mono text-ivory-50">{totalTasks}</span>
-            <span className="text-xs text-charcoal-400 ml-2">recorded</span>
+            <span className="text-xs text-charcoal-400 ml-2">
+              ({tasks.filter((t) => !t.isDemo).length} live)
+            </span>
           </div>
         </Card>
 
-        {/* Active Tasks */}
         <Card className="bg-charcoal-900/70 border-subtle">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-charcoal-400 uppercase">Active / In Progress</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-950/60 border border-blue-800/40 flex items-center justify-center text-blue-400">
-              <Clock className="w-3.5 h-3.5" />
-            </div>
+            <Clock className="w-4 h-4 text-blue-400" />
           </div>
           <div className="mt-3">
             <span className="text-2xl font-bold font-mono text-blue-300">{activeTasks}</span>
@@ -145,13 +142,10 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        {/* Awaiting Review */}
         <Card className="bg-charcoal-900/70 border-subtle">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-charcoal-400 uppercase">Awaiting Review</span>
-            <div className="w-7 h-7 rounded-lg bg-purple-950/60 border border-purple-800/40 flex items-center justify-center text-purple-400">
-              <AlertCircle className="w-3.5 h-3.5" />
-            </div>
+            <AlertCircle className="w-4 h-4 text-purple-400" />
           </div>
           <div className="mt-3">
             <span className="text-2xl font-bold font-mono text-purple-300">{awaitingReview}</span>
@@ -159,24 +153,20 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        {/* Completed */}
         <Card className="bg-charcoal-900/70 border-subtle">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-charcoal-400 uppercase">Finalized &amp; Approved</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-950/60 border border-emerald-800/40 flex items-center justify-center text-emerald-400">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            </div>
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-3">
             <span className="text-2xl font-bold font-mono text-emerald-400">{completedTasks}</span>
-            <span className="text-xs text-charcoal-400 ml-2">on-chain</span>
+            <span className="text-xs text-charcoal-400 ml-2">approved</span>
           </div>
         </Card>
       </div>
 
-      {/* Main Content Grid: Recent Tasks & Agent Activity */}
+      {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Recent Tasks Table (8 cols) */}
         <div className="lg:col-span-8 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-ivory-100 flex items-center gap-2">
@@ -193,19 +183,26 @@ export default function DashboardPage() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-charcoal-950/80 border-b border-subtle text-charcoal-400 font-mono">
                   <tr>
-                    <th className="py-3 px-4">TASK & OBJECTIVE</th>
+                    <th className="py-3 px-4">TASK &amp; ORIGIN</th>
                     <th className="py-3 px-4">DATASET</th>
                     <th className="py-3 px-4">STATUS</th>
                     <th className="py-3 px-4 text-right">ACTION</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-subtle">
-                  {tasks.slice(0, 5).map((task) => (
+                  {tasks.slice(0, 6).map((task) => (
                     <tr key={task.id} className="hover:bg-charcoal-850/50 transition-colors">
                       <td className="py-3.5 px-4 max-w-xs">
-                        <div className="font-medium text-ivory-100 truncate">{task.title}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-ivory-100 truncate">{task.title}</span>
+                          {task.isDemo && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-charcoal-800 text-charcoal-400 border border-subtle shrink-0">
+                              SAMPLE
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[11px] text-charcoal-400 font-mono mt-0.5">
-                          ID: {task.id} • {formatTimestamp(task.createdAt)}
+                          {task.id} • {formatTimestamp(task.createdAt)}
                         </div>
                       </td>
                       <td className="py-3.5 px-4 font-mono text-[11px] text-charcoal-300">
@@ -232,9 +229,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Side Panel: Agent Workforce & On-Chain Ledger (4 cols) */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Verified Agents */}
           <Card className="bg-charcoal-900 border-subtle">
             <CardHeader className="pb-3 border-b border-subtle">
               <CardTitle className="text-sm font-semibold text-ivory-100 flex items-center gap-2">
@@ -243,10 +238,11 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-3 space-y-3">
-              {INITIAL_AGENTS.map((agent) => (
-                <div
+              {agents.map((agent) => (
+                <Link
                   key={agent.id}
-                  className="p-3 rounded-lg bg-charcoal-950/60 border border-subtle flex items-center justify-between text-xs"
+                  href={`/passport/${agent.slug}`}
+                  className="p-3 rounded-lg bg-charcoal-950/60 border border-subtle hover:border-forest-600/40 flex items-center justify-between text-xs transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
                     <img
@@ -264,36 +260,33 @@ export default function DashboardPage() {
                   <span className="text-emerald-400 font-mono text-[11px]">
                     {agent.reputationScore}% Rep
                   </span>
-                </div>
+                </Link>
               ))}
             </CardContent>
           </Card>
 
-          {/* On-Chain Smart Contract Status */}
           <Card className="bg-charcoal-900 border-subtle">
             <CardHeader className="pb-3 border-b border-subtle">
               <CardTitle className="text-sm font-semibold text-ivory-100 flex items-center gap-2">
                 <Activity className="w-4 h-4 text-bnb-yellow" />
-                TaskRegistry.sol On-Chain
+                Trust &amp; Contract Diagnostics
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-3 space-y-2.5 text-xs font-mono">
               <div className="flex justify-between text-charcoal-400">
-                <span>Contract Network:</span>
+                <span>Network:</span>
                 <span className="text-ivory-200">BNB Smart Chain (56)</span>
               </div>
               <div className="flex justify-between text-charcoal-400">
                 <span>Agent ID Contract:</span>
-                <span className="text-forest-400 truncate max-w-[150px]">0x60b9...022f</span>
+                <span className="text-forest-400">0x60b9...022f</span>
               </div>
-              <div className="flex justify-between text-charcoal-400">
-                <span>State Transitions:</span>
-                <span className="text-emerald-400 font-bold">7 Contract Events</span>
-              </div>
-              <div className="pt-3 border-t border-subtle">
-                <Link href="/activity" className="text-xs text-forest-400 hover:text-forest-300 flex items-center justify-between">
-                  <span>View On-Chain Ledger</span>
-                  <ExternalLink className="w-3 h-3" />
+              <div className="pt-3 border-t border-subtle flex justify-between">
+                <Link href="/trust" className="text-xs text-forest-400 hover:underline flex items-center gap-1">
+                  Trust Center <ExternalLink className="w-3 h-3" />
+                </Link>
+                <Link href="/activity" className="text-xs text-charcoal-300 hover:underline flex items-center gap-1">
+                  Ledger <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
             </CardContent>
