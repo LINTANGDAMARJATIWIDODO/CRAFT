@@ -11,6 +11,20 @@ async function main() {
   const balance = await ethers.provider.getBalance(deployer.address);
   console.log(`Deployer balance: ${ethers.formatEther(balance)} BNB\n`);
 
+  if (
+    (network.name === 'bsc' || network.name === 'bscTestnet') &&
+    deployer.address.toLowerCase() === '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'
+  ) {
+    throw new Error(
+      'Refusing to deploy to live BNB Chain using default Hardhat public key #0. Set a real funded PRIVATE_KEY in root .env first.'
+    );
+  }
+  if ((network.name === 'bsc' || network.name === 'bscTestnet') && balance === 0n) {
+    throw new Error(
+      `Deployer ${deployer.address} has 0 BNB on ${network.name}. Fund this address with BNB for gas before deploying.`
+    );
+  }
+
   let agentIdAddress: string;
   let enforceCheck = true;
 

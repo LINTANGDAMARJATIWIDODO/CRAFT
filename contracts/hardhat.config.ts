@@ -1,10 +1,18 @@
+import * as path from 'path';
 import { HardhatUserConfig } from 'hardhat/config';
 import '@nomicfoundation/hardhat-toolbox';
 import * as dotenv from 'dotenv';
 
+// Load root monorepo .env first, then allow local contracts/.env overrides
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config();
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+const PRIVATE_KEY =
+  process.env.PRIVATE_KEY && /^0x?[a-fA-F0-9]{64}$/.test(process.env.PRIVATE_KEY.trim())
+    ? process.env.PRIVATE_KEY.trim().startsWith('0x')
+      ? process.env.PRIVATE_KEY.trim()
+      : `0x${process.env.PRIVATE_KEY.trim()}`
+    : '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 const BSCSCAN_API_KEY = process.env.BSCSCAN_API_KEY || '';
 
 const config: HardhatUserConfig = {
