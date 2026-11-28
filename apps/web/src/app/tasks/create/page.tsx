@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { INITIAL_AGENTS } from '@/lib/constants';
 import { parseCsvContent, profileDataset } from '@/lib/dataset-analyzer';
 import { createTaskRecord, SAMPLE_SALES_CSV } from '@/lib/task-store';
+import { API_BASE } from '@/lib/craft-client';
 import { DatasetProfilingResult, TaskState } from '@craft/shared';
 import {
   UploadCloud,
@@ -105,7 +106,7 @@ export default function CreateTaskPage() {
 
       let createdRemote: any = null;
       try {
-        const res = await fetch('http://localhost:4000/api/tasks', {
+        const res = await fetch(`${API_BASE}/api/tasks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useWallet } from '@/components/wallet/WalletContext';
 import { useToast } from '@/components/ui/ToastContext';
@@ -8,13 +8,14 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { API_BASE, saveLocalCouncilRun } from '@/lib/craft-client';
+import { API_BASE, fetchMissionEvents, saveLocalCouncilRun } from '@/lib/craft-client';
 import { SAMPLE_SALES_CSV, getStoredTasks, saveStoredTasks, updateTask } from '@/lib/task-store';
 import { parseCsvContent, profileDataset, computeDeterministicCalculations } from '@/lib/dataset-analyzer';
 import { computeSha256 } from '@/lib/utils';
 import {
   CouncilExecutionRun,
   CouncilStepLog,
+  MissionStreamEvent,
   TaskRecord,
   TaskState,
 } from '@craft/shared';
@@ -33,6 +34,8 @@ import {
   AlertTriangle,
   BadgeCheck,
   SearchCheck,
+  Radio,
+  GitFork,
 } from 'lucide-react';
 
 export default function LiveMissionPage() {
@@ -52,6 +55,34 @@ export default function LiveMissionPage() {
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState<boolean>(false);
   const [isApproving, setIsApproving] = useState<boolean>(false);
   const [txSignStatus, setTxSignStatus] = useState<string | null>(null);
+  const [sseEvents, setSseEvents] = useState<MissionStreamEvent[]>([]);
+  const [sseConnected, setSseConnected] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetchMissionEvents().then((evts) => {
+      if (evts.length > 0) setSseEvents(evts.slice(0, 12));
+    });
+
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
+    const es = new EventSource(`${API_BASE}/api/mission/stream`);
+    es.onopen = () => setSseConnected(true);
+    es.addEventListener('snapshot', (e: MessageEvent) => {
+      try {
+        const list = JSON.parse(e.data) as MissionStreamEvent[];
+        if (Array.isArray(list) && list.length > 0) {
+          setSseEvents([...list].reverse().slice(0, 12));
+        }
+      } catch {}
+    });
+    es.addEventListener('mission', (e: MessageEvent) => {
+      try {
+        const evt = JSON.parse(e.data) as MissionStreamEvent;
+        setSseEvents((prev) => [evt, ...prev.filter((p) => p.id !== evt.id)].slice(0, 14));
+      } catch {}
+    });
+    es.onerror = () => setSseConnected(false);
+    return () => es.close();
+  }, []);
 
   const handleCsvUpload = async (file: File) => {
     if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
@@ -299,14 +330,24 @@ export default function LiveMissionPage() {
         signed = await authenticateWithSignature();
       }
 
-      // Record approval on backend (updating Agent Passport & Leaderboard!)
-      try {
-        await fetch(`${API_BASE}/api/tasks/${taskRecord.id}/approve`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
+      // Record approval on backend (enforcing anti-self-approval + deduplication)
+      const approveRes = await fetch(`${API_BASE}/api/tasks/${taskRecord.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callerAddress: address || taskRecord.clientAddress,
+        }),
+      }).catch(() => null);
+
+      if (approveRes && !approveRes.ok) {
+        const errBody = await approveRes.json().catch(() => ({}));
+        notify({
+          title: 'Approval Blocked',
+          description: errBody.error || 'Self-approval or duplicate reward rejected.',
+          variant: 'error',
         });
-      } catch {}
+        return;
+      }
 
       const updated = updateTask(taskRecord.id, {
         status: TaskState.Approved,
@@ -517,7 +558,7 @@ export default function LiveMissionPage() {
                             0{step.stepOrder}. {step.agentName}
                           </span>
                           <span className="text-[10px] font-mono text-emerald-400">
-                            {step.durationMs}ms
+                            {step.durationMs}ms {step.resourceUsage ? `· ${step.resourceUsage.memoryDeltaKb}KB` : ''}
                           </span>
                         </div>
                         <p className="text-[11px] text-charcoal-300">{step.contributionSummary}</p>
@@ -528,6 +569,48 @@ export default function LiveMissionPage() {
                         ))}
                       </div>
                     ))}
+                  </div>
+
+                  {/* Hierarchical Delegation Graph & Live SSE Telemetry */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-3 border-t border-subtle">
+                    <div className="p-3.5 rounded-xl bg-charcoal-950 border border-subtle space-y-2">
+                      <div className="text-[11px] font-mono text-charcoal-400 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-ivory-100">
+                          <GitFork className="w-3.5 h-3.5 text-forest-400" />
+                          Hierarchical Agent Delegations
+                        </span>
+                        <span>{councilRun.delegations?.length || 0} links</span>
+                      </div>
+                      <div className="space-y-1.5 text-[11px] font-mono">
+                        {(councilRun.delegations || []).map((del) => (
+                          <div key={del.id} className="flex items-center justify-between gap-2 text-charcoal-300">
+                            <span className="truncate">
+                              {del.delegatorAgentId} → {del.delegateeAgentId}
+                            </span>
+                            <Badge variant="success" size="sm">
+                              {del.status}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-charcoal-950 border border-subtle space-y-2">
+                      <div className="text-[11px] font-mono text-charcoal-400 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-ivory-100">
+                          <Radio className={`w-3.5 h-3.5 ${sseConnected ? 'text-emerald-400 animate-pulse' : 'text-charcoal-500'}`} />
+                          Live Backend SSE Telemetry
+                        </span>
+                        <span className="text-emerald-400">{sseConnected ? 'STREAM LIVE' : 'REPLAY'}</span>
+                      </div>
+                      <div className="space-y-1 max-h-28 overflow-y-auto text-[10px] font-mono">
+                        {sseEvents.slice(0, 6).map((evt) => (
+                          <div key={evt.id} className="text-charcoal-300 truncate">
+                            <span className="text-forest-400">[{evt.progressPercent}%]</span> {evt.stageLabel}: {evt.message}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </Card>
 
@@ -540,6 +623,11 @@ export default function LiveMissionPage() {
                         <span className="text-sm font-semibold text-ivory-100">
                           Consolidated Analytical Report
                         </span>
+                        {councilRun.confidenceScore !== undefined && (
+                          <Badge variant="outline" size="sm">
+                            Confidence {councilRun.confidenceScore}/100
+                          </Badge>
+                        )}
                       </div>
                       <Badge variant={missionStage === 4 ? 'success' : 'warning'} size="sm">
                         {missionStage === 4 ? 'Client Approved' : 'Awaiting Client Sign-Off'}
@@ -550,6 +638,20 @@ export default function LiveMissionPage() {
                       {councilRun.consolidatedReport.executiveSummary}
                     </p>
 
+                    {councilRun.contradictionChecks && councilRun.contradictionChecks.length > 0 && (
+                      <div className="p-3 rounded-lg bg-charcoal-950 border border-subtle space-y-1.5 text-[11px]">
+                        <div className="font-mono text-charcoal-400">SENTINEL CONTRADICTION AUDIT (AI AGREEMENT != CORRECTNESS)</div>
+                        {councilRun.contradictionChecks.map((chk) => (
+                          <div key={chk.id} className="flex items-start justify-between gap-2 text-charcoal-300">
+                            <span>• {chk.claim}</span>
+                            <span className="font-mono text-emerald-400 shrink-0">
+                              {chk.consistent ? 'CONSISTENT' : 'FLAGGED'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       {councilRun.consolidatedReport.keyMetrics.map((m, i) => (
                         <div key={i} className="p-2.5 rounded-lg bg-charcoal-950 border border-subtle font-mono">
@@ -559,9 +661,16 @@ export default function LiveMissionPage() {
                       ))}
                     </div>
 
-                    <div className="p-3 rounded-lg bg-charcoal-950 border border-subtle font-mono text-[11px] space-y-1">
-                      <span className="text-charcoal-400 block">Composite Cryptographic Proof Hash (SHA-256):</span>
-                      <span className="text-emerald-400 break-all block">{councilRun.compositeProofHash}</span>
+                    <div className="p-3 rounded-lg bg-charcoal-950 border border-subtle font-mono text-[10px] space-y-1">
+                      <span className="text-charcoal-400 block">4-Digest Commitment Bundle &amp; Composite Seal (SHA-256):</span>
+                      <div className="text-charcoal-300 break-all">Dataset: {taskRecord?.digests?.datasetHash || councilRun.datasetHash}</div>
+                      {councilRun.configHash && (
+                        <div className="text-charcoal-300 break-all">Config: {councilRun.configHash}</div>
+                      )}
+                      {taskRecord?.calculationsHash && (
+                        <div className="text-charcoal-300 break-all">Evidence: {taskRecord.calculationsHash}</div>
+                      )}
+                      <span className="text-emerald-400 break-all block pt-0.5">Composite Seal: {councilRun.compositeProofHash}</span>
                     </div>
 
                     {txSignStatus && (

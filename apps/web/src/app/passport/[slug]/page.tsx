@@ -28,7 +28,7 @@ import {
 
 export default function AgentPassportDetailPage() {
   const params = useParams();
-  const slug = params.slug as string;
+  const slug = (params?.slug as string) || '';
   const { notify } = useToast();
 
   const [agent, setAgent] = useState<AgentProfile | null>(null);
@@ -237,6 +237,31 @@ export default function AgentPassportDetailPage() {
                   {b}
                 </Badge>
               ))}
+            </div>
+          )}
+
+          {agent.craftCredentials?.breakdown && (
+            <div className="pt-3 border-t border-subtle space-y-2">
+              <div className="text-[11px] font-mono text-charcoal-400 uppercase">
+                6-Dimension Reputation Evidence ({agent.craftCredentials.breakdown.overallScore}/100)
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] font-mono">
+                {[
+                  { label: 'Reliability', val: agent.craftCredentials.breakdown.reliability },
+                  { label: 'Quality', val: agent.craftCredentials.breakdown.quality },
+                  { label: 'Completion', val: agent.craftCredentials.breakdown.completion },
+                  { label: 'Expertise', val: agent.craftCredentials.breakdown.expertise },
+                  { label: 'Client Trust', val: agent.craftCredentials.breakdown.clientTrust },
+                  { label: 'Timeliness', val: agent.craftCredentials.breakdown.timeliness },
+                ].map((dim) => (
+                  <div key={dim.label} className="p-2 rounded bg-charcoal-950 border border-subtle">
+                    <div className="flex justify-between">
+                      <span className="text-charcoal-400">{dim.label}</span>
+                      <span className="text-emerald-400 font-bold">{dim.val}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </Card>

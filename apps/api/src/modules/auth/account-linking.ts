@@ -1,6 +1,6 @@
-import { verifyMessage, createPublicClient, http } from 'viem';
+import { verifyMessage, createPublicClient, fallback, http } from 'viem';
 import { bsc } from 'viem/chains';
-import { OFFICIAL_AGENT_ID_CONTRACT_BSC } from '@craft/shared';
+import { OFFICIAL_AGENT_ID_ABI, OFFICIAL_AGENT_ID_CONTRACT_BSC, SUPPORTED_CHAINS } from '@craft/shared';
 
 const AGENT_ID_ABI = [
   {
@@ -92,12 +92,15 @@ export class AccountLinkingService {
     try {
       const client = createPublicClient({
         chain: bsc,
-        transport: http('https://bsc-dataseed.binance.org/', { timeout: 3000, retryCount: 0 }),
+        transport: fallback([
+          http(SUPPORTED_CHAINS.BSC_MAINNET.rpcUrl, { timeout: 3500, retryCount: 0 }),
+          http(SUPPORTED_CHAINS.BSC_MAINNET.fallbackRpcUrl, { timeout: 2500, retryCount: 0 }),
+        ]),
       });
 
       const balance = await client.readContract({
         address: OFFICIAL_AGENT_ID_CONTRACT_BSC as `0x${string}`,
-        abi: AGENT_ID_ABI,
+        abi: OFFICIAL_AGENT_ID_ABI,
         functionName: 'balanceOf',
         args: [address as `0x${string}`],
       });

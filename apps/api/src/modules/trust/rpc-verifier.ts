@@ -1,26 +1,22 @@
-import { createPublicClient, http, isAddress } from 'viem';
+import { createPublicClient, fallback, http, isAddress } from 'viem';
 import { bsc, bscTestnet } from 'viem/chains';
-import { OFFICIAL_AGENT_ID_CONTRACT_BSC, SUPPORTED_CHAINS } from '@craft/shared';
+import { OFFICIAL_AGENT_ID_ABI, OFFICIAL_AGENT_ID_CONTRACT_BSC, SUPPORTED_CHAINS } from '@craft/shared';
 import { craftStore } from '../store/craft-store';
-
-const AGENT_ID_MINIMAL_ABI = [
-  {
-    name: 'balanceOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'owner', type: 'address' }],
-    outputs: [{ name: 'balance', type: 'uint256' }],
-  },
-] as const;
 
 const mainnetClient = createPublicClient({
   chain: bsc,
-  transport: http(SUPPORTED_CHAINS.BSC_MAINNET.rpcUrl, { timeout: 4000, retryCount: 0 }),
+  transport: fallback([
+    http(SUPPORTED_CHAINS.BSC_MAINNET.rpcUrl, { timeout: 4500, retryCount: 0 }),
+    http(SUPPORTED_CHAINS.BSC_MAINNET.fallbackRpcUrl, { timeout: 3000, retryCount: 0 }),
+  ]),
 });
 
 const testnetClient = createPublicClient({
   chain: bscTestnet,
-  transport: http(SUPPORTED_CHAINS.BSC_TESTNET.rpcUrl, { timeout: 4000, retryCount: 0 }),
+  transport: fallback([
+    http(SUPPORTED_CHAINS.BSC_TESTNET.rpcUrl, { timeout: 4500, retryCount: 0 }),
+    http(SUPPORTED_CHAINS.BSC_TESTNET.fallbackRpcUrl, { timeout: 3000, retryCount: 0 }),
+  ]),
 });
 
 export class TrustRpcVerifier {
@@ -59,12 +55,24 @@ export class TrustRpcVerifier {
     }
 
     try {
-      const balanceBig = await mainnetClient.readContract({
-        address: OFFICIAL_AGENT_ID_CONTRACT_BSC as `0x${string}`,
-        abi: AGENT_ID_MINIMAL_ABI,
-        functionName: 'balanceOf',
-        args: [address as `0x${string}`],
-      });
+      const [balanceBig, contractName, contractSymbol] = await Promise.all([
+        mainnetClient.readContract({
+          address: OFFICIAL_AGENT_ID_CONTRACT_BSC as `0x${string}`,
+          abi: OFFICIAL_AGENT_ID_ABI,
+          functionName: 'balanceOf',
+          args: [address as `0x${string}`],
+        }),
+        mainnetClient.readContract({
+          address: OFFICIAL_AGENT_ID_CONTRACT_BSC as `0x${string}`,
+          abi: OFFICIAL_AGENT_ID_ABI,
+          functionName: 'name',
+        }).catch(() => 'SPACE ID Agent ID'),
+        mainnetClient.readContract({
+          address: OFFICIAL_AGENT_ID_CONTRACT_BSC as `0x${string}`,
+          abi: OFFICIAL_AGENT_ID_ABI,
+          functionName: 'symbol',
+        }).catch(() => 'AI'),
+      ]);
       const balance = Number(balanceBig);
       return {
         address,
@@ -72,13 +80,13 @@ export class TrustRpcVerifier {
         hasAgentId: balance > 0,
         balance,
         contractAddress: OFFICIAL_AGENT_ID_CONTRACT_BSC,
-        network: 'BNB Smart Chain Mainnet (56)',
+        network: `BNB Smart Chain Mainnet (56) • ${contractName} (${contractSymbol})`,
         rpcReachable: true,
         bscScanUrl: `https://bscscan.com/address/${address}`,
         note:
           balance > 0
-            ? `Verified on-chain: Wallet holds ${balance} Binance Agent ID BEP-721 token(s).`
-            : 'RPC check succeeded: 0 Binance Agent ID tokens held at this address on BSC Mainnet.',
+            ? `Verified on-chain (${contractName}): Wallet holds ${balance} official Agent ID token(s).`
+            : `RPC check succeeded (${contractName}): 0 Agent ID tokens held at this address on BSC Mainnet.`,
       };
     } catch (err: any) {
       return {

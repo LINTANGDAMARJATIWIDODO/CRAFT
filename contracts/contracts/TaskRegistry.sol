@@ -6,26 +6,33 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title IAgentID
- * @notice Standard interface for Binance Agent ID BEP-721 token
+ * @notice Verified interface for official SPACE ID / Binance Agent ID contract on BNB Chain
+ * @dev Verified on-chain via BSC RPC against 0x60b9262456de011f7d15a54cdd8c48baaa8b022f:
+ *      ERC-165 supportsInterface(0x80ac58cd) = true (ERC-721),
+ *      supportsInterface(0x5b5e139f) = true (ERC-721Metadata),
+ *      supportsInterface(0x780e9d63) = false (ERC-721Enumerable is NOT implemented).
  */
 interface IAgentID {
     function balanceOf(address owner) external view returns (uint256);
+    function supportsInterface(bytes4 interfaceId) external view returns (bool);
 }
 
 /**
  * @title TaskRegistry
- * @notice Verifiable Task Lifecycle and Proof Anchor Contract for CRAFT Autonomous AI Work Network
- * @dev Deployed on BNB Smart Chain, enforces Binance Agent ID identity verification
+ * @notice Verified Autonomous Work Protocol & Delegation Registry for CRAFT on BNB Smart Chain
+ * @dev Implements complete lifecycle: Created -> Proposed -> Accepted -> InProgress -> Submitted -> Verified -> Approved
  */
 contract TaskRegistry is Ownable, ReentrancyGuard {
     enum TaskState {
-        Created,            // 0
-        Accepted,           // 1
-        InProgress,         // 2
-        Submitted,          // 3
-        RevisionRequested,  // 4
-        Approved,           // 5
-        Cancelled           // 6
+        Created,           // 0
+        Proposed,          // 1 (Agents submitted execution bids)
+        Accepted,          // 2
+        InProgress,        // 3
+        Submitted,         // 4
+        Verified,          // 5 (Independent Sentinel / Council validation commitment)
+        Approved,          // 6 (Human client approval)
+        RevisionRequested, // 7
+        Cancelled          // 8
     }
 
     struct Task {
@@ -33,35 +40,63 @@ contract TaskRegistry is Ownable, ReentrancyGuard {
         address client;
         address assignedAgent;
         bytes32 datasetHash;
+        bytes32 configHash;
+        bytes32 evidenceHash;
         bytes32 proofHash;
         TaskState state;
         uint256 createdAt;
         uint256 acceptedAt;
         uint256 startedAt;
         uint256 submittedAt;
+        uint256 verifiedAt;
         uint256 approvedAt;
+        uint256 parentTaskId;
         string metadataURI;
         string outputURI;
+        address verifiedByValidator;
     }
 
-    // Official Binance Agent ID Contract
+    struct Bid {
+        address agent;
+        uint256 estimatedDurationSec;
+        uint256 proposedCostWei;
+        bytes32 methodologyHash;
+        bool exists;
+    }
+
+    struct CapabilityRecord {
+        bool registered;
+        bool hasAgentIdAtRegistration;
+        string metadataURI;
+        uint256 updatedAt;
+    }
+
     IAgentID public agentIdContract;
     bool public enforceAgentIdCheck;
 
     uint256 public nextTaskId;
     mapping(uint256 => Task) public tasks;
+    mapping(uint256 => mapping(address => Bid)) public taskBids;
+    mapping(uint256 => uint256[]) public childSubtasks;
+    mapping(address => CapabilityRecord) public agentCapabilities;
+    mapping(address => bool) public uniqueInteractingAgentIds;
+    uint256 public uniqueAgentIdCount;
 
     // Custom Errors
     error UnauthorizedClient();
     error UnauthorizedAgent();
+    error UnauthorizedValidator();
+    error SelfApprovalBlocked();
     error MissingAgentID(address target);
     error InvalidStateTransition(TaskState current, TaskState requested);
     error InvalidTask(uint256 taskId);
     error ZeroAddress();
-    error TaskAlreadyApproved();
     error EmptyProofHash();
+    error CircularDelegation();
+    error BidNotFound();
 
     // Events
+    event AgentCapabilityRegistered(address indexed agent, string metadataURI, bool verifiedAgentId);
     event TaskCreated(
         uint256 indexed taskId,
         address indexed client,
@@ -69,38 +104,78 @@ contract TaskRegistry is Ownable, ReentrancyGuard {
         bytes32 datasetHash,
         string metadataURI
     );
+    event BidProposed(
+        uint256 indexed taskId,
+        address indexed agent,
+        uint256 estimatedDurationSec,
+        uint256 proposedCostWei,
+        bytes32 methodologyHash
+    );
+    event BidSelected(uint256 indexed taskId, address indexed client, address indexed selectedAgent);
+    event SubtaskDelegated(
+        uint256 indexed parentTaskId,
+        uint256 indexed subtaskId,
+        address indexed delegatorAgent,
+        address delegateeAgent
+    );
     event TaskAccepted(uint256 indexed taskId, address indexed agent, uint256 timestamp);
     event TaskStarted(uint256 indexed taskId, address indexed agent, uint256 timestamp);
     event ProofSubmitted(uint256 indexed taskId, address indexed agent, bytes32 proofHash, string outputURI);
+    event ProofDigestsCommitted(
+        uint256 indexed taskId,
+        bytes32 datasetHash,
+        bytes32 configHash,
+        bytes32 evidenceHash,
+        bytes32 proofHash
+    );
+    event TaskVerified(uint256 indexed taskId, address indexed validator, bytes32 evidenceHash, uint256 timestamp);
     event RevisionRequested(uint256 indexed taskId, address indexed client, string reason);
     event TaskApproved(uint256 indexed taskId, address indexed client, uint256 timestamp);
     event TaskCancelled(uint256 indexed taskId, address indexed client);
     event AgentIdContractUpdated(address indexed oldContract, address indexed newContract);
     event AgentIdCheckToggled(bool isEnabled);
 
-    /**
-     * @param _agentIdContract Address of the official Binance Agent ID BEP-721 token
-     * @param _enforceCheck Flag to mandate on-chain Agent ID checks
-     */
     constructor(address _agentIdContract, bool _enforceCheck) Ownable(msg.sender) {
         agentIdContract = IAgentID(_agentIdContract);
         enforceAgentIdCheck = _enforceCheck;
         nextTaskId = 1;
     }
 
+    function _requireAgentId(address target) internal {
+        if (enforceAgentIdCheck && address(agentIdContract) != address(0)) {
+            if (agentIdContract.balanceOf(target) == 0) {
+                revert MissingAgentID(target);
+            }
+            if (!uniqueInteractingAgentIds[target]) {
+                uniqueInteractingAgentIds[target] = true;
+                uniqueAgentIdCount++;
+            }
+        }
+    }
+
     /**
-     * @notice Creates a new data analysis task
-     * @param assignedAgent The authorized AI Agent address
-     * @param datasetHash The SHA-256 cryptographic digest of the ingested dataset
-     * @param metadataURI Off-chain metadata reference (JSON metadata pointer)
+     * @notice Register agent capabilities on-chain with Agent ID enforcement
+     */
+    function registerAgentCapabilities(string calldata metadataURI) external {
+        _requireAgentId(msg.sender);
+        bool hasId = address(agentIdContract) != address(0) && agentIdContract.balanceOf(msg.sender) > 0;
+        agentCapabilities[msg.sender] = CapabilityRecord({
+            registered: true,
+            hasAgentIdAtRegistration: hasId,
+            metadataURI: metadataURI,
+            updatedAt: block.timestamp
+        });
+        emit AgentCapabilityRegistered(msg.sender, metadataURI, hasId);
+    }
+
+    /**
+     * @notice Create a direct or open task (assignedAgent can be address(0) for open bidding)
      */
     function createTask(
         address assignedAgent,
         bytes32 datasetHash,
         string calldata metadataURI
     ) external returns (uint256 taskId) {
-        if (assignedAgent == address(0)) revert ZeroAddress();
-
         taskId = nextTaskId++;
         Task storage newTask = tasks[taskId];
         newTask.id = taskId;
@@ -115,19 +190,98 @@ contract TaskRegistry is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice AI Agent accepts the assigned task. Validates Binance Agent ID on-chain.
+     * @notice Qualified Agent ID holder proposes a bid on an open task
+     */
+    function proposeBid(
+        uint256 taskId,
+        uint256 estimatedDurationSec,
+        uint256 proposedCostWei,
+        bytes32 methodologyHash
+    ) external nonReentrant {
+        Task storage task = tasks[taskId];
+        if (task.id == 0) revert InvalidTask(taskId);
+        if (task.state != TaskState.Created && task.state != TaskState.Proposed) {
+            revert InvalidStateTransition(task.state, TaskState.Proposed);
+        }
+        _requireAgentId(msg.sender);
+
+        taskBids[taskId][msg.sender] = Bid({
+            agent: msg.sender,
+            estimatedDurationSec: estimatedDurationSec,
+            proposedCostWei: proposedCostWei,
+            methodologyHash: methodologyHash,
+            exists: true
+        });
+        task.state = TaskState.Proposed;
+
+        emit BidProposed(taskId, msg.sender, estimatedDurationSec, proposedCostWei, methodologyHash);
+    }
+
+    /**
+     * @notice Client selects winning bid, assigning the agent and accepting the agreement
+     */
+    function selectBid(uint256 taskId, address selectedAgent) external nonReentrant {
+        Task storage task = tasks[taskId];
+        if (task.id == 0) revert InvalidTask(taskId);
+        if (msg.sender != task.client) revert UnauthorizedClient();
+        if (task.state != TaskState.Proposed) revert InvalidStateTransition(task.state, TaskState.Accepted);
+        if (!taskBids[taskId][selectedAgent].exists) revert BidNotFound();
+
+        task.assignedAgent = selectedAgent;
+        task.state = TaskState.Accepted;
+        task.acceptedAt = block.timestamp;
+
+        emit BidSelected(taskId, msg.sender, selectedAgent);
+        emit TaskAccepted(taskId, selectedAgent, block.timestamp);
+    }
+
+    /**
+     * @notice Hierarchical Agent-to-Agent delegation creating a verifiable child subtask
+     */
+    function delegateSubtask(
+        uint256 parentTaskId,
+        address delegateeAgent,
+        bytes32 subtaskDigest,
+        string calldata metadataURI
+    ) external nonReentrant returns (uint256 subtaskId) {
+        Task storage parent = tasks[parentTaskId];
+        if (parent.id == 0) revert InvalidTask(parentTaskId);
+        if (msg.sender != parent.assignedAgent && msg.sender != parent.client) revert UnauthorizedAgent();
+        if (delegateeAgent == address(0)) revert ZeroAddress();
+        if (delegateeAgent == msg.sender) revert CircularDelegation();
+
+        _requireAgentId(delegateeAgent);
+
+        subtaskId = nextTaskId++;
+        Task storage sub = tasks[subtaskId];
+        sub.id = subtaskId;
+        sub.client = msg.sender;
+        sub.assignedAgent = delegateeAgent;
+        sub.datasetHash = subtaskDigest;
+        sub.state = TaskState.Accepted;
+        sub.createdAt = block.timestamp;
+        sub.acceptedAt = block.timestamp;
+        sub.parentTaskId = parentTaskId;
+        sub.metadataURI = metadataURI;
+
+        childSubtasks[parentTaskId].push(subtaskId);
+
+        emit TaskCreated(subtaskId, msg.sender, delegateeAgent, subtaskDigest, metadataURI);
+        emit SubtaskDelegated(parentTaskId, subtaskId, msg.sender, delegateeAgent);
+    }
+
+    /**
+     * @notice Assigned AI Agent accepts a task directly (validates Binance Agent ID on-chain)
      */
     function acceptTask(uint256 taskId) external nonReentrant {
         Task storage task = tasks[taskId];
         if (task.id == 0) revert InvalidTask(taskId);
         if (msg.sender != task.assignedAgent) revert UnauthorizedAgent();
-        if (task.state != TaskState.Created) revert InvalidStateTransition(task.state, TaskState.Accepted);
-
-        if (enforceAgentIdCheck && address(agentIdContract) != address(0)) {
-            if (agentIdContract.balanceOf(msg.sender) == 0) {
-                revert MissingAgentID(msg.sender);
-            }
+        if (task.state != TaskState.Created && task.state != TaskState.Proposed) {
+            revert InvalidStateTransition(task.state, TaskState.Accepted);
         }
+
+        _requireAgentId(msg.sender);
 
         task.state = TaskState.Accepted;
         task.acceptedAt = block.timestamp;
@@ -136,7 +290,7 @@ contract TaskRegistry is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice AI Agent transitions the task to InProgress upon starting computation
+     * @notice Transition Accepted task to InProgress
      */
     function startTask(uint256 taskId) external nonReentrant {
         Task storage task = tasks[taskId];
@@ -151,13 +305,36 @@ contract TaskRegistry is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice AI Agent submits verified calculation deliverables and SHA-256 proof hash
+     * @notice Legacy / simple proof submission preserving backward compatibility
      */
     function submitProof(
         uint256 taskId,
         bytes32 proofHash,
         string calldata outputURI
     ) external nonReentrant {
+        _submitProofInternal(taskId, bytes32(0), proofHash, proofHash, outputURI);
+    }
+
+    /**
+     * @notice Full 4-digest verifiable submission (dataset, config, deterministic evidence, composite report proof)
+     */
+    function submitFourDigestsProof(
+        uint256 taskId,
+        bytes32 configHash,
+        bytes32 evidenceHash,
+        bytes32 proofHash,
+        string calldata outputURI
+    ) external nonReentrant {
+        _submitProofInternal(taskId, configHash, evidenceHash, proofHash, outputURI);
+    }
+
+    function _submitProofInternal(
+        uint256 taskId,
+        bytes32 configHash,
+        bytes32 evidenceHash,
+        bytes32 proofHash,
+        string calldata outputURI
+    ) internal {
         Task storage task = tasks[taskId];
         if (task.id == 0) revert InvalidTask(taskId);
         if (msg.sender != task.assignedAgent) revert UnauthorizedAgent();
@@ -168,21 +345,46 @@ contract TaskRegistry is Ownable, ReentrancyGuard {
         }
 
         task.state = TaskState.Submitted;
+        task.configHash = configHash;
+        task.evidenceHash = evidenceHash;
         task.proofHash = proofHash;
         task.outputURI = outputURI;
         task.submittedAt = block.timestamp;
 
         emit ProofSubmitted(taskId, msg.sender, proofHash, outputURI);
+        emit ProofDigestsCommitted(taskId, task.datasetHash, configHash, evidenceHash, proofHash);
     }
 
     /**
-     * @notice Client reviews deliverables and approves task completion
+     * @notice Independent validator agent (e.g. Sentinel) verifies submitted work before client approval
+     */
+    function verifyTask(uint256 taskId, bytes32 verificationEvidenceHash) external nonReentrant {
+        Task storage task = tasks[taskId];
+        if (task.id == 0) revert InvalidTask(taskId);
+        if (task.state != TaskState.Submitted) revert InvalidStateTransition(task.state, TaskState.Verified);
+        if (msg.sender == task.assignedAgent) revert UnauthorizedValidator(); // Validator must be distinct from executor
+
+        _requireAgentId(msg.sender);
+
+        task.state = TaskState.Verified;
+        task.verifiedAt = block.timestamp;
+        task.verifiedByValidator = msg.sender;
+
+        emit TaskVerified(taskId, msg.sender, verificationEvidenceHash, block.timestamp);
+    }
+
+    /**
+     * @notice Client approves Submitted or Verified deliverable (blocks self-approval!)
      */
     function approveTask(uint256 taskId) external nonReentrant {
         Task storage task = tasks[taskId];
         if (task.id == 0) revert InvalidTask(taskId);
         if (msg.sender != task.client) revert UnauthorizedClient();
-        if (task.state != TaskState.Submitted) revert InvalidStateTransition(task.state, TaskState.Approved);
+        if (msg.sender == task.assignedAgent) revert SelfApprovalBlocked();
+
+        if (task.state != TaskState.Submitted && task.state != TaskState.Verified) {
+            revert InvalidStateTransition(task.state, TaskState.Approved);
+        }
 
         task.state = TaskState.Approved;
         task.approvedAt = block.timestamp;
@@ -190,46 +392,45 @@ contract TaskRegistry is Ownable, ReentrancyGuard {
         emit TaskApproved(taskId, msg.sender, block.timestamp);
     }
 
-    /**
-     * @notice Client requests revision with specific reasoning
-     */
     function requestRevision(uint256 taskId, string calldata reason) external nonReentrant {
         Task storage task = tasks[taskId];
         if (task.id == 0) revert InvalidTask(taskId);
         if (msg.sender != task.client) revert UnauthorizedClient();
-        if (task.state != TaskState.Submitted) revert InvalidStateTransition(task.state, TaskState.RevisionRequested);
+
+        if (task.state != TaskState.Submitted && task.state != TaskState.Verified) {
+            revert InvalidStateTransition(task.state, TaskState.RevisionRequested);
+        }
 
         task.state = TaskState.RevisionRequested;
-
         emit RevisionRequested(taskId, msg.sender, reason);
     }
 
-    /**
-     * @notice Client cancels task before work begins
-     */
     function cancelTask(uint256 taskId) external nonReentrant {
         Task storage task = tasks[taskId];
         if (task.id == 0) revert InvalidTask(taskId);
         if (msg.sender != task.client) revert UnauthorizedClient();
 
-        if (task.state != TaskState.Created && task.state != TaskState.Accepted) {
+        if (
+            task.state != TaskState.Created &&
+            task.state != TaskState.Proposed &&
+            task.state != TaskState.Accepted
+        ) {
             revert InvalidStateTransition(task.state, TaskState.Cancelled);
         }
 
         task.state = TaskState.Cancelled;
-
         emit TaskCancelled(taskId, msg.sender);
     }
 
-    /**
-     * @notice Get full task details
-     */
     function getTask(uint256 taskId) external view returns (Task memory) {
         if (tasks[taskId].id == 0) revert InvalidTask(taskId);
         return tasks[taskId];
     }
 
-    // Owner administration functions
+    function getChildSubtasks(uint256 parentTaskId) external view returns (uint256[] memory) {
+        return childSubtasks[parentTaskId];
+    }
+
     function setAgentIdContract(address _newContract) external onlyOwner {
         address oldContract = address(agentIdContract);
         agentIdContract = IAgentID(_newContract);

@@ -110,6 +110,28 @@ export default function ReputationPage() {
           </table>
         </div>
       </Card>
+
+      {/* Transparent 6-Dimension Weights */}
+      <Card className="bg-charcoal-900 border-subtle p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-ivory-100">
+          6-Dimension Evidence Weighting Formula &amp; Deduplication Safeguards
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          {[
+            { name: 'Reliability (20%)', desc: 'Executed proofs without runtime failure or broken digest hashes.' },
+            { name: 'Analytical Quality (25%)', desc: 'Data hygiene score, Z-score anomalies & contradiction checks.' },
+            { name: 'Completion Rate (15%)', desc: 'Ratio of finalized tasks relative to accepted engagements.' },
+            { name: 'Expertise Depth (15%)', desc: 'Registered capability spec breadth & verified job volume.' },
+            { name: 'Client Trust (15%)', desc: 'Human approvals penalized transparently by revision requests.' },
+            { name: 'SLA Timeliness (10%)', desc: 'Measured runtime duration against agreed bid SLA target.' },
+          ].map((rule) => (
+            <div key={rule.name} className="p-3 rounded-lg bg-charcoal-950 border border-subtle space-y-1">
+              <div className="font-mono font-semibold text-emerald-400">{rule.name}</div>
+              <p className="text-charcoal-400 text-[11px]">{rule.desc}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
     </div>
   );
 }

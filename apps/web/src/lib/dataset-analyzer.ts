@@ -4,6 +4,7 @@ import {
   DatasetColumnSchema,
   DatasetProfilingResult,
   DeterministicCalculations,
+  computeCorrelationsAndTimeForecast,
 } from '@craft/shared';
 
 export interface ParseResult {
@@ -104,8 +105,10 @@ export async function profileDataset(
       }
     }
 
+    const missingPercent = rowCount > 0 ? Number(((nullCount / rowCount) * 100).toFixed(2)) : 0;
+
     if (nullCount > rowCount * 0.2) {
-      warnings.push(`Column '${header}' has high missing rate (${((nullCount / rowCount) * 100).toFixed(1)}%).`);
+      warnings.push(`Column '${header}' has high missing rate (${missingPercent.toFixed(1)}%).`);
     }
 
     columns.push({
@@ -114,6 +117,7 @@ export async function profileDataset(
       sampleValues,
       nullCount,
       distinctCount: distinctSet.size,
+      missingPercent,
     });
   }
 
@@ -246,11 +250,19 @@ export async function computeDeterministicCalculations(
     };
   }
 
+  const { correlations, timeSeriesAggregation, forecast } = computeCorrelationsAndTimeForecast(
+    parsed.rows,
+    profiling.columns
+  );
+
   // Build deterministic canonical payload string and SHA-256
   const canonicalPayload = JSON.stringify({
     totalRows: rowCount,
     numerical: numericalDistributions,
     categorical: categoricalDistributions,
+    correlations,
+    timeSeriesAggregation,
+    forecast,
   });
 
   const rawHash = await computeSha256(canonicalPayload);
@@ -262,6 +274,9 @@ export async function computeDeterministicCalculations(
     },
     numericalDistributions,
     categoricalDistributions,
+    correlations,
+    timeSeriesAggregation,
+    forecast,
     rawHash,
   };
 }

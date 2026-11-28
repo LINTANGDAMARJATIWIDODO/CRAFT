@@ -47,10 +47,17 @@ export default function DashboardPage() {
 
   const totalTasks = tasks.length;
   const activeTasks = tasks.filter(
-    (t) => t.status === TaskState.Created || t.status === TaskState.Accepted || t.status === TaskState.InProgress
+    (t) =>
+      t.status === TaskState.Created ||
+      t.status === TaskState.Proposed ||
+      t.status === TaskState.Accepted ||
+      t.status === TaskState.InProgress
   ).length;
   const awaitingReview = tasks.filter(
-    (t) => t.status === TaskState.Submitted || t.status === TaskState.RevisionRequested
+    (t) =>
+      t.status === TaskState.Submitted ||
+      t.status === TaskState.Verified ||
+      t.status === TaskState.RevisionRequested
   ).length;
   const completedTasks = tasks.filter((t) => t.status === TaskState.Approved).length;
 

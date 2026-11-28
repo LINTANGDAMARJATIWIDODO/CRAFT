@@ -36,6 +36,12 @@ import {
   ScrollText,
   Bell,
   Rocket,
+  GitFork,
+  Gauge,
+  Network,
+  UserPlus,
+  ClipboardCheck,
+  Briefcase,
 } from 'lucide-react';
 
 interface NavSubItem {
@@ -59,10 +65,10 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: '/mission',
-        label: 'CRAFT Live Mission',
-        description: '30s end-to-end Council + Proof interactive demo',
+        label: 'Live Mission Room',
+        description: 'Real-time SSE Council telemetry, 4 digests & approval gate',
         icon: Rocket,
-        badge: 'LIVE DEMO',
+        badge: 'SSE LIVE',
       },
       {
         href: '/dashboard',
@@ -89,6 +95,13 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'AI Workforce',
     items: [
       {
+        href: '/economy',
+        label: 'Agent Economy & Bids',
+        description: 'Capability registry, explainable matching & SLA bidding',
+        icon: Briefcase,
+        badge: 'NEW',
+      },
+      {
         href: '/agents',
         label: 'AI Agents',
         description: 'Verified agent directory & specializations',
@@ -97,13 +110,13 @@ const NAV_GROUPS: NavGroup[] = [
       {
         href: '/council',
         label: 'Agent Council',
-        description: 'Multi-agent collaboration & sequential audit',
+        description: 'Hierarchical delegation, contradiction check & proof',
         icon: Users,
       },
       {
         href: '/passport',
         label: 'Agent Passport',
-        description: 'Public identity, credentials & track record',
+        description: 'Public identity, 6-dim reputation & credentials',
         icon: BadgeCheck,
       },
     ],
@@ -113,9 +126,16 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Intelligence',
     items: [
       {
+        href: '/arena',
+        label: 'Benchmark Arena',
+        description: 'Side-by-side blinded accuracy & latency evaluation',
+        icon: Gauge,
+        badge: 'NEW',
+      },
+      {
         href: '/intelligence',
         label: 'Data Intelligence',
-        description: 'Dataset profiling & quantitative distribution explorer',
+        description: 'Profiling, Pearson correlations & OLS trend forecast',
         icon: Database,
       },
       {
@@ -137,15 +157,22 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Trust Center',
     items: [
       {
+        href: '/trust-graph',
+        label: 'Agent Trust Graph',
+        description: 'Verified delegation, validation & approval network',
+        icon: Network,
+        badge: 'GRAPH',
+      },
+      {
         href: '/trust',
         label: 'Verify Proof',
-        description: 'Public BNB Chain & SHA-256 verification explorer',
+        description: 'Public BNB Chain & 4-digest SHA-256 verification',
         icon: SearchCheck,
       },
       {
         href: '/reputation',
         label: 'Agent Reputation',
-        description: 'Anti-Sybil scoring rules & reliability audits',
+        description: '6-dimension evidence rules & anti-self-approval',
         icon: Award,
       },
       {
@@ -160,6 +187,19 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'ecosystem',
     label: 'Ecosystem',
     items: [
+      {
+        href: '/network',
+        label: 'Join Agent Network',
+        description: 'Binance Wallet onboarding, Agent ID guide & feedback',
+        icon: UserPlus,
+        badge: 'BNB ID',
+      },
+      {
+        href: '/readiness',
+        label: 'Judge Readiness Audit',
+        description: 'Live implementation matrix & evidence verification',
+        icon: ClipboardCheck,
+      },
       {
         href: '/league',
         label: 'Global Agent League',
@@ -201,8 +241,8 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 export const Navbar: React.FC = () => {
-  const pathname = usePathname();
-  const { isConnected, address, hasAgentId, isBinanceLoggedIn } = useWallet();
+  const pathname = usePathname() || '';
+  const { isConnected, address, hasAgentId, agentDomainName, isBinanceLoggedIn, connectBinanceAgent } = useWallet();
   const { notifications, unreadCount, markAllRead } = useToast();
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -387,9 +427,12 @@ export const Navbar: React.FC = () => {
                   variant="primary"
                   size="sm"
                   leftIcon={<Wallet className="w-3.5 h-3.5" />}
-                  onClick={() => setIsWalletModalOpen(true)}
+                  onClick={async () => {
+                    const res = await connectBinanceAgent();
+                    if (!res.success) setIsWalletModalOpen(true);
+                  }}
                 >
-                  Connect Wallet
+                  Connect Binance Agent
                 </Button>
               </div>
             ) : isConnected ? (
@@ -409,7 +452,7 @@ export const Navbar: React.FC = () => {
                   </span>
                 )}
                 <span className="font-mono font-medium text-ivory-100">
-                  {truncateAddress(address || '', 4)}
+                  {agentDomainName || truncateAddress(address || '', 4)}
                 </span>
               </button>
             ) : (

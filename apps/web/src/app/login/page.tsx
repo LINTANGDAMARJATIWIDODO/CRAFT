@@ -24,6 +24,7 @@ import {
   X,
   AlertTriangle,
   ArrowRightLeft,
+  Sparkles,
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -33,6 +34,10 @@ export default function LoginPage() {
     address,
     hasAgentId,
     agentIdTokenId,
+    agentDomainName,
+    binanceWalletDetected,
+    connectBinanceAgent,
+    connectWithAgentIdDirect,
     connectWallet,
     disconnectWallet,
     switchAccount,
@@ -46,11 +51,14 @@ export default function LoginPage() {
     linkCurrentWalletToBinance,
     isDemoAgentIdOverride,
     toggleDemoAgentId,
+    lastConnectionError,
   } = useWallet();
 
   const [isOAuthModalOpen, setIsOAuthModalOpen] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [linkingMessage, setLinkingMessage] = useState<string | null>(null);
+  const [directInput, setDirectInput] = useState('');
+  const [isResolvingDirect, setIsResolvingDirect] = useState(false);
 
   const handleBinanceClick = async () => {
     // If OAuth is configured with official partner credentials, start redirect flow
@@ -160,25 +168,73 @@ export default function LoginPage() {
               </span>
             </div>
 
-            {/* Option B: Connect Web3 Wallet */}
-            <div>
+            {/* Option B: Direct Binance Web3 Wallet & Agent ID Connect */}
+            <div className="space-y-3">
               {!isConnected ? (
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full"
-                  leftIcon={<Wallet className="w-4 h-4" />}
-                  onClick={connectWallet}
-                >
-                  Connect Web3 Wallet
-                </Button>
+                <>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="w-full bg-[#F3BA2F] hover:bg-[#e5ad22] text-charcoal-950 font-semibold border-0"
+                    leftIcon={<Sparkles className="w-4 h-4" />}
+                    onClick={() => connectBinanceAgent()}
+                  >
+                    {binanceWalletDetected
+                      ? 'Connect Binance Web3 Wallet Directly'
+                      : 'Connect Binance Agent / Web3 Wallet'}
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    className="w-full"
+                    leftIcon={<Wallet className="w-4 h-4" />}
+                    onClick={() => connectWallet()}
+                  >
+                    Connect Other Browser Wallet (MetaMask / Trust)
+                  </Button>
+
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      setIsResolvingDirect(true);
+                      await connectWithAgentIdDirect(directInput);
+                      setIsResolvingDirect(false);
+                    }}
+                    className="p-3 rounded-xl bg-charcoal-950 border border-subtle space-y-2"
+                  >
+                    <label className="block text-[11px] font-mono text-charcoal-400">
+                      DIRECT AGENT ID (.AI) OR AGENTIC WALLET ADDRESS
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={directInput}
+                        onChange={(e) => setDirectInput(e.target.value)}
+                        placeholder="myagent.ai or 0x..."
+                        className="flex-1 px-3 py-2 rounded-lg bg-charcoal-900 border border-subtle font-mono text-xs text-ivory-100"
+                      />
+                      <Button type="submit" variant="outline" size="sm" isLoading={isResolvingDirect}>
+                        Connect
+                      </Button>
+                    </div>
+                  </form>
+
+                  {lastConnectionError && (
+                    <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-800/40 text-[11px] text-amber-200">
+                      {lastConnectionError === 'BINANCE_EXTENSION_NOT_FOUND'
+                        ? 'Binance Web3 Wallet extension not found in browser. Enter your .ai handle above, pick MetaMask/Trust Wallet, or install Binance Web3 Wallet.'
+                        : lastConnectionError}
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="p-3.5 rounded-xl bg-charcoal-950 border border-subtle space-y-3">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-charcoal-400 font-mono">CONNECTED WALLET</span>
                     <span className="text-emerald-400 font-mono text-[11px] flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      Ready
+                      {agentDomainName ? agentDomainName : 'Ready'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">

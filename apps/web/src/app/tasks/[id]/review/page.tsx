@@ -29,8 +29,8 @@ import {
 
 export default function ResultReviewPage() {
   const params = useParams();
-  const taskId = params.id as string;
-  const { isConnected, authenticateWithSignature } = useWallet();
+  const taskId = (params?.id as string) || '';
+  const { isConnected, address, authenticateWithSignature } = useWallet();
   const { notify } = useToast();
 
   const [task, setTask] = useState<TaskRecord | null>(null);
@@ -83,13 +83,16 @@ export default function ResultReviewPage() {
         signed = await authenticateWithSignature();
       }
 
-      try {
-        await fetch(`${API_BASE}/api/tasks/${task.id}/approve`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        });
-      } catch {}
+      const approveRes = await fetch(`${API_BASE}/api/tasks/${task.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callerAddress: address || task.clientAddress }),
+      }).catch(() => null);
+
+      if (approveRes && !approveRes.ok) {
+        const errBody = await approveRes.json().catch(() => ({}));
+        throw new Error(errBody.error || 'Approval rejected by anti-self-approval safeguard.');
+      }
 
       const updated = updateTask(task.id, {
         status: TaskState.Approved,

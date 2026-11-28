@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@craft/api": "*",
     "@craft/shared": "*",
     "clsx": "^2.1.1",
     "lucide-react": "^0.395.0",

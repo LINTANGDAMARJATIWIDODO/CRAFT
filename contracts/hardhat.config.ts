@@ -12,6 +12,7 @@ const config: HardhatUserConfig = {
     version: '0.8.24',
     settings: {
       evmVersion: 'cancun',
+      viaIR: true,
       optimizer: {
         enabled: true,
         runs: 200,
@@ -27,12 +28,12 @@ const config: HardhatUserConfig = {
       chainId: 31337,
     },
     bscTestnet: {
-      url: 'https://data-seed-prebsc-1-s1.binance.org:8545/',
+      url: process.env.BNB_TESTNET_RPC_URL || 'https://bsc-testnet-rpc.publicnode.com',
       chainId: 97,
       accounts: [PRIVATE_KEY],
     },
     bsc: {
-      url: 'https://bsc-dataseed.binance.org/',
+      url: process.env.BNB_RPC_URL || 'https://bsc.publicnode.com',
       chainId: 56,
       accounts: [PRIVATE_KEY],
     },

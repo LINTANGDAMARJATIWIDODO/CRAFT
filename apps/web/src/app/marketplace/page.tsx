@@ -37,6 +37,16 @@ export default function MarketplacePage() {
 
         if (!matchesSearch) return false;
         if (selectedState === 'all') return true;
+        if (selectedState === 'open') {
+          return t.status === TaskState.Created || t.status === TaskState.Proposed || t.status === TaskState.Accepted;
+        }
+        if (selectedState === 'review') {
+          return (
+            t.status === TaskState.Submitted ||
+            t.status === TaskState.Verified ||
+            t.status === TaskState.RevisionRequested
+          );
+        }
         return t.status.toString() === selectedState;
       })
       .sort((a, b) => {
@@ -84,8 +94,14 @@ export default function MarketplacePage() {
           <div className="flex items-center gap-1.5 overflow-x-auto">
             {[
               { key: 'all', label: `All (${tasks.length})` },
-              { key: TaskState.Created.toString(), label: `Open (${tasks.filter((t) => t.status === TaskState.Created).length})` },
-              { key: TaskState.Submitted.toString(), label: `Review (${tasks.filter((t) => t.status === TaskState.Submitted).length})` },
+              {
+                key: 'open',
+                label: `Open / Bidding (${tasks.filter((t) => t.status === TaskState.Created || t.status === TaskState.Proposed || t.status === TaskState.Accepted).length})`,
+              },
+              {
+                key: 'review',
+                label: `Review (${tasks.filter((t) => t.status === TaskState.Submitted || t.status === TaskState.Verified || t.status === TaskState.RevisionRequested).length})`,
+              },
               { key: TaskState.Approved.toString(), label: `Finalized (${tasks.filter((t) => t.status === TaskState.Approved).length})` },
             ].map((s) => (
               <button

@@ -27,7 +27,7 @@ import {
 
 function TrustCenterContent() {
   const searchParams = useSearchParams();
-  const initialQuery = searchParams.get('q') || '';
+  const initialQuery = searchParams?.get('q') || '';
 
   const [query, setQuery] = useState(initialQuery);
   const [isSearching, setIsSearching] = useState(false);

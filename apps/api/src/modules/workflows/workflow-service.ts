@@ -279,7 +279,7 @@ export class WorkflowService {
     }
 
     const queue: string[] = [];
-    for (const [id, deg] of inDegree.entries()) {
+    for (const [id, deg] of Array.from(inDegree.entries())) {
       if (deg === 0) queue.push(id);
     }
 

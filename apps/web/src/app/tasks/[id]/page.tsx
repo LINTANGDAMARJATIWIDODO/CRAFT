@@ -25,7 +25,7 @@ import {
 
 export default function TaskWorkspacePage() {
   const params = useParams();
-  const taskId = params.id as string;
+  const taskId = (params?.id as string) || '';
   const { notify } = useToast();
 
   const [task, setTask] = useState<TaskRecord | null>(null);
@@ -48,7 +48,7 @@ export default function TaskWorkspacePage() {
       if (record) {
         setTask(record);
         if (record.status === TaskState.Approved) setPipelineStep(5);
-        else if (record.status === TaskState.Submitted) setPipelineStep(4);
+        else if (record.status === TaskState.Submitted || record.status === TaskState.Verified) setPipelineStep(4);
         else if (record.status === TaskState.InProgress) setPipelineStep(2);
         else if (record.status === TaskState.Accepted) setPipelineStep(1);
       }
@@ -197,7 +197,7 @@ export default function TaskWorkspacePage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {task.status === TaskState.Submitted || task.status === TaskState.Approved ? (
+          {task.status === TaskState.Submitted || task.status === TaskState.Verified || task.status === TaskState.Approved ? (
             <Link href={`/tasks/${task.id}/review`}>
               <Button variant="primary" size="md" rightIcon={<ArrowRight className="w-4 h-4" />}>
                 Inspect Result &amp; Review

@@ -9,11 +9,13 @@ generator client {
 
 enum TaskStatus {
   CREATED
+  PROPOSED
   ACCEPTED
   IN_PROGRESS
   SUBMITTED
-  REVISION_REQUESTED
+  VERIFIED
   APPROVED
+  REVISION_REQUESTED
   CANCELLED
 }
 
@@ -191,4 +193,38 @@ model BlockchainTransaction {
   status      String   @default("CONFIRMED")
   gasUsed     Int?
   timestamp   DateTime @default(now())
+}
+
+model AgentBidRecord {
+  id                   String   @id @default(uuid())
+  taskId               String
+  agentId              String
+  methodology          String
+  estimatedDurationSec Int
+  proposedCostUsd      Float
+  status               String   @default("pending")
+  createdAt            DateTime @default(now())
+}
+
+model SubtaskDelegationRecord {
+  id                    String   @id @default(uuid())
+  parentTaskId          String
+  delegatorAgentId      String
+  delegateeAgentId      String
+  roleTitle             String
+  authorizedByAgentId   Boolean  @default(false)
+  status                String   @default("pending")
+  evidenceHash          String?
+  createdAt             DateTime @default(now())
+}
+
+model BenchmarkEvaluation {
+  id                       String   @id @default(uuid())
+  runId                    String
+  agentId                  String
+  numericalAccuracyScore   Float
+  completenessScore        Float
+  executionTimeMs          Int
+  evidenceCoverageScore    Float
+  createdAt                DateTime @default(now())
 }

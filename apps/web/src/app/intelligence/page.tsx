@@ -130,6 +130,67 @@ export default function DataIntelligencePage() {
               <span className="text-emerald-400 break-all">{calculations.rawHash}</span>
             </div>
           </Card>
+
+          {/* Pearson Correlations & OLS Trend Forecast */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="bg-charcoal-900 border-subtle p-5 space-y-4">
+              <h3 className="text-sm font-semibold text-ivory-100">
+                Pearson Linear Correlations
+              </h3>
+              {calculations.correlations && calculations.correlations.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="border-b border-subtle text-charcoal-400">
+                      <tr>
+                        <th className="py-2 pr-3">VARIABLE PAIR</th>
+                        <th className="py-2 px-3">PEARSON R</th>
+                        <th className="py-2 pl-3">STRENGTH</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-subtle">
+                      {calculations.correlations.map((c, idx) => (
+                        <tr key={idx}>
+                          <td className="py-2 pr-3 text-ivory-100">{c.colA} × {c.colB}</td>
+                          <td className="py-2 px-3 text-emerald-400 font-bold">{c.correlation}</td>
+                          <td className="py-2 pl-3 text-charcoal-300">{c.strength}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-xs text-charcoal-400">Upload a dataset with 2+ numeric columns to compute correlations.</p>
+              )}
+            </Card>
+
+            <Card className="bg-charcoal-900 border-subtle p-5 space-y-4">
+              <h3 className="text-sm font-semibold text-ivory-100">
+                Time-Series &amp; Linear Trend Forecast
+              </h3>
+              {calculations.forecast ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3 font-mono text-xs">
+                    <div className="p-3 rounded-lg bg-charcoal-950 border border-subtle">
+                      <span className="text-charcoal-400 block">NEXT PERIOD ({calculations.forecast.nextPeriodLabel})</span>
+                      <span className="text-lg font-bold text-emerald-400 mt-1 block">
+                        {calculations.forecast.projectedValue.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-lg bg-charcoal-950 border border-subtle">
+                      <span className="text-charcoal-400 block">OLS SLOPE / PERIOD</span>
+                      <span className="text-lg font-bold text-bnb mt-1 block">
+                        {calculations.forecast.slopePerPeriod >= 0 ? '+' : ''}
+                        {calculations.forecast.slopePerPeriod}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-charcoal-400">{calculations.forecast.methodology}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-charcoal-400">Requires a chronological date column spanning 2+ periods.</p>
+              )}
+            </Card>
+          </div>
         </>
       )}
     </div>

@@ -6,15 +6,16 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { API_BASE } from '@/lib/craft-client';
 
 function BinanceCallbackHandler() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const code = searchParams.get('code');
-  const state = searchParams.get('state');
-  const errorParam = searchParams.get('error');
-  const errorDesc = searchParams.get('error_description');
+  const code = searchParams?.get('code');
+  const state = searchParams?.get('state');
+  const errorParam = searchParams?.get('error');
+  const errorDesc = searchParams?.get('error_description');
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -33,7 +34,7 @@ function BinanceCallbackHandler() {
     }
 
     // Exchange code for session token via CRAFT backend
-    fetch('http://localhost:4000/api/auth/binance/callback', {
+    fetch(`${API_BASE}/api/auth/binance/callback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, state }),

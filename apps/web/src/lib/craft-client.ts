@@ -1,16 +1,24 @@
 import {
+  AgentBid,
+  AgentMatchExplanation,
   AgentProfile,
   AuditLogEntry,
+  BenchmarkRunRecord,
   BlockchainEventRecord,
+  CommunityFeedbackItem,
   CouncilExecutionRun,
   DeveloperApiKeyMeta,
   LeaderboardCategory,
   LeaderboardEntry,
+  MissionStreamEvent,
   OFFICIAL_AGENT_ID_CONTRACT_BSC,
   PlatformMetricsSnapshot,
+  ReadinessCriterionResult,
   RecurringJobConfig,
+  SubtaskDelegation,
   TaskRecord,
   TaskState,
+  TrustGraphSnapshot,
   WebhookConfig,
   WorkflowDefinition,
   WorkflowExecutionRecord,
@@ -18,7 +26,13 @@ import {
 import { INITIAL_AGENTS } from './constants';
 import { getStoredTasks, saveStoredTasks } from './task-store';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' &&
+  window.location.hostname !== 'localhost' &&
+  window.location.hostname !== '127.0.0.1'
+    ? ''
+    : 'http://localhost:4000');
 
 const LOCAL_COUNCIL_KEY = 'craft_council_runs_v1';
 const LOCAL_WORKFLOWS_KEY = 'craft_workflows_v1';
@@ -324,4 +338,158 @@ export async function fetchEnterpriseLogsAndJobs(): Promise<{
     logs: logsRes?.logs || [],
     jobs: jobsRes?.jobs || [],
   };
+}
+
+// Competitive Economy, Matching, Bidding & Delegations
+export async function matchAgentsRemote(params: {
+  objective: string;
+  csvHeaders?: string[];
+  rowCount?: number;
+  preferLowestCost?: boolean;
+  maxLatencySec?: number;
+}): Promise<{ matches: AgentMatchExplanation[]; apiConnected: boolean }> {
+  const remote = await fetchJsonWithTimeout<{ matches: AgentMatchExplanation[] }>(
+    `${API_BASE}/api/agents/match`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    5000
+  );
+  if (remote?.matches) {
+    return { matches: remote.matches, apiConnected: true };
+  }
+  return { matches: [], apiConnected: false };
+}
+
+export async function fetchTaskBids(taskId: string): Promise<AgentBid[]> {
+  const res = await fetchJsonWithTimeout<{ bids: AgentBid[] }>(`${API_BASE}/api/tasks/${taskId}/bids`);
+  return res?.bids || [];
+}
+
+export async function solicitTaskBids(taskId: string, requireVerifiedAgentId = false) {
+  const res = await fetch(`${API_BASE}/api/tasks/${taskId}/bids`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ autoSolicit: true, requireVerifiedAgentId }),
+  });
+  return res.json();
+}
+
+export async function selectTaskBid(taskId: string, bidId: string, clientAddress: string) {
+  const res = await fetch(`${API_BASE}/api/tasks/${taskId}/bids/${bidId}/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientAddress }),
+  });
+  return res.json();
+}
+
+export async function fetchTaskDelegations(taskId: string): Promise<SubtaskDelegation[]> {
+  const res = await fetchJsonWithTimeout<{ delegations: SubtaskDelegation[] }>(
+    `${API_BASE}/api/tasks/${taskId}/delegations`
+  );
+  return res?.delegations || [];
+}
+
+// Mission Live SSE, Benchmark Arena & Trust Graph
+export async function fetchMissionEvents(): Promise<MissionStreamEvent[]> {
+  const res = await fetchJsonWithTimeout<{ events: MissionStreamEvent[] }>(`${API_BASE}/api/mission/events`);
+  return res?.events || [];
+}
+
+export async function fetchReputationMethodology() {
+  return fetchJsonWithTimeout<{
+    dimensions: Array<{ key: string; label: string; weight: number; rule: string }>;
+    safeguards: string[];
+  }>(`${API_BASE}/api/reputation/methodology`);
+}
+
+export async function fetchTrustGraph(): Promise<{ snapshot: TrustGraphSnapshot | null; apiConnected: boolean }> {
+  const res = await fetchJsonWithTimeout<TrustGraphSnapshot>(`${API_BASE}/api/trust/graph`);
+  return { snapshot: res, apiConnected: Boolean(res) };
+}
+
+export async function fetchBenchmarks(): Promise<{ runs: BenchmarkRunRecord[]; apiConnected: boolean }> {
+  const res = await fetchJsonWithTimeout<{ runs: BenchmarkRunRecord[] }>(`${API_BASE}/api/benchmark`);
+  return { runs: res?.runs || [], apiConnected: Boolean(res) };
+}
+
+export async function runBlindedBenchmark(params: { csvContent?: string; fileName?: string }) {
+  const res = await fetch(`${API_BASE}/api/benchmark/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  return res.json() as Promise<{ run?: BenchmarkRunRecord; error?: string }>;
+}
+
+export async function rateBenchmarkAgent(runId: string, agentId: string, rating: number) {
+  const res = await fetch(`${API_BASE}/api/benchmark/${runId}/rate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agentId, rating }),
+  });
+  return res.json();
+}
+
+// Network Growth, Feedback & Judge Readiness
+export async function fetchNetworkStats() {
+  return fetchJsonWithTimeout<{
+    metrics: PlatformMetricsSnapshot;
+    participants: Array<{ address: string; hasAgentId: boolean; firstSeenAt: string; contract: string }>;
+    feedback: CommunityFeedbackItem[];
+  }>(`${API_BASE}/api/network/stats`);
+}
+
+export async function registerNetworkParticipant(walletAddress: string) {
+  const res = await fetch(`${API_BASE}/api/network/register-participant`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ walletAddress }),
+  });
+  return res.json();
+}
+
+export async function submitNetworkFeedback(payload: {
+  walletAddress?: string;
+  hasAgentId: boolean;
+  rating: number;
+  comment: string;
+}) {
+  const res = await fetch(`${API_BASE}/api/network/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function fetchJudgeReadiness() {
+  return fetchJsonWithTimeout<{
+    metrics: PlatformMetricsSnapshot;
+    criteria: ReadinessCriterionResult[];
+    disclaimer: string;
+  }>(`${API_BASE}/api/readiness`, undefined, 6000);
+}
+
+export async function resolveAgentIdRemote(query: string, register = true) {
+  return fetchJsonWithTimeout<{
+    query: string;
+    inputType: 'domain' | 'address' | 'invalid';
+    domainName: string | null;
+    resolvedAddress: string | null;
+    hasAgentId: boolean;
+    balance: number;
+    contractAddress: string;
+    network: string;
+    rpcReachable: boolean;
+    bscScanUrl?: string;
+    note: string;
+  }>(
+    `${API_BASE}/api/agent-id/resolve?q=${encodeURIComponent(query)}&register=${register ? 'true' : 'false'}`,
+    undefined,
+    6000
+  );
 }

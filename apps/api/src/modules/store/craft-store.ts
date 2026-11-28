@@ -1,10 +1,12 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import {
   AgentProfile,
   AuditLogEntry,
   BlockchainEventRecord,
+  CommunityFeedbackItem,
   CouncilExecutionRun,
   DeveloperApiKeyMeta,
   LeaderboardCategory,
@@ -19,8 +21,13 @@ import {
   WorkflowDefinition,
   WorkflowExecutionRecord,
 } from '@craft/shared';
+import { buildDefaultCapabilitySpec } from '../economy/matching-bidding-service';
+import { computeReputationBreakdown } from '../reputation/reputation-service';
 
-const STATE_FILE = path.join(process.cwd(), '.craft-state.json');
+const STATE_FILE = path.join(
+  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME ? os.tmpdir() : process.cwd(),
+  '.craft-state.json'
+);
 
 export interface StoredApiKey extends DeveloperApiKeyMeta {
   keyHash: string;
@@ -38,6 +45,9 @@ export interface CraftPersistedState {
   auditLogs: AuditLogEntry[];
   recurringJobs: RecurringJobConfig[];
   endpointCalls: Record<string, { calls: number; totalLatencyMs: number; errors: number }>;
+  rewardedTaskIds: string[];
+  communityFeedback: CommunityFeedbackItem[];
+  uniqueInteractingWallets: Record<string, { hasAgentId: boolean; firstSeenAt: string; contract: string }>;
 }
 
 const DEFAULT_AGENTS: AgentProfile[] = [
@@ -462,14 +472,43 @@ class CraftStore {
     this.state = this.loadOrInit();
   }
 
+  private hydrateAgents(agents: AgentProfile[], tasks: TaskRecord[]): AgentProfile[] {
+    return agents.map((agent) => {
+      const capabilitySpec = agent.capabilitySpec || buildDefaultCapabilitySpec(agent.roleKey);
+      const enriched: AgentProfile = { ...agent, capabilitySpec };
+      const breakdown = computeReputationBreakdown(enriched, tasks);
+      if (enriched.craftCredentials) {
+        enriched.craftCredentials = {
+          ...enriched.craftCredentials,
+          breakdown,
+        };
+      }
+      return enriched;
+    });
+  }
+
   private loadOrInit(): CraftPersistedState {
     try {
       if (fs.existsSync(STATE_FILE)) {
         const raw = fs.readFileSync(STATE_FILE, 'utf8');
-        const parsed = JSON.parse(raw) as CraftPersistedState;
+        const parsed = JSON.parse(raw) as Partial<CraftPersistedState>;
+        const rawTasks = (parsed.tasks?.length ? parsed.tasks : DEMO_TASKS).map((t) => {
+          // Safely migrate legacy v1 TaskState numbers where Approved was 5 and Submitted was 3
+          if (t.isDemo && t.id === 'task-craft-001' && (t.status as number) === 5) {
+            return { ...t, status: TaskState.Approved };
+          }
+          if (t.isDemo && t.id === 'task-craft-002' && (t.status as number) === 3) {
+            return { ...t, status: TaskState.Submitted };
+          }
+          return t;
+        });
+        const agents = this.hydrateAgents(
+          parsed.agents?.length ? parsed.agents : DEFAULT_AGENTS,
+          rawTasks
+        );
         return {
-          agents: parsed.agents?.length ? parsed.agents : DEFAULT_AGENTS,
-          tasks: parsed.tasks?.length ? parsed.tasks : DEMO_TASKS,
+          agents,
+          tasks: rawTasks,
           councilRuns: parsed.councilRuns || [],
           workflows: parsed.workflows?.length ? parsed.workflows : DEFAULT_WORKFLOW_TEMPLATES,
           workflowExecutions: parsed.workflowExecutions || [],
@@ -479,6 +518,9 @@ class CraftStore {
           auditLogs: parsed.auditLogs || [],
           recurringJobs: parsed.recurringJobs?.length ? parsed.recurringJobs : DEFAULT_RECURRING_JOBS,
           endpointCalls: parsed.endpointCalls || {},
+          rewardedTaskIds: parsed.rewardedTaskIds || ['task-craft-001'],
+          communityFeedback: parsed.communityFeedback || [],
+          uniqueInteractingWallets: parsed.uniqueInteractingWallets || {},
         };
       }
     } catch (err) {
@@ -486,7 +528,7 @@ class CraftStore {
     }
 
     const fresh: CraftPersistedState = {
-      agents: DEFAULT_AGENTS,
+      agents: this.hydrateAgents(DEFAULT_AGENTS, DEMO_TASKS),
       tasks: DEMO_TASKS,
       councilRuns: [],
       workflows: DEFAULT_WORKFLOW_TEMPLATES,
@@ -507,6 +549,9 @@ class CraftStore {
       ],
       recurringJobs: DEFAULT_RECURRING_JOBS,
       endpointCalls: {},
+      rewardedTaskIds: ['task-craft-001'],
+      communityFeedback: [],
+      uniqueInteractingWallets: {},
     };
     this.persist(fresh);
     return fresh;
@@ -605,26 +650,34 @@ class CraftStore {
     const activeTasksCount = this.state.tasks.filter(
       (t) =>
         t.status === TaskState.Created ||
+        t.status === TaskState.Proposed ||
         t.status === TaskState.Accepted ||
         t.status === TaskState.InProgress ||
-        t.status === TaskState.Submitted
+        t.status === TaskState.Submitted ||
+        t.status === TaskState.Verified
     ).length;
     const completedJobsCount = this.state.tasks.filter((t) => t.status === TaskState.Approved).length;
     const successfulVerificationsCount =
       this.state.events.filter(
         (e) =>
-          (e.eventName === 'TaskApproved' || e.eventName === 'ProofSubmitted') &&
+          (e.eventName === 'TaskApproved' || e.eventName === 'TaskVerified' || e.eventName === 'ProofSubmitted') &&
           e.verificationTier !== 'demonstration_seed'
       ).length +
       this.state.tasks.filter((t) => Boolean(t.outputProofHash)).length;
 
+    const interactingList = Object.values(this.state.uniqueInteractingWallets || {});
+    const uniqueAgentIdAddressesInteracted = interactingList.filter((w) => w.hasAgentId).length;
+
     return {
       verifiedAgentsCount,
+      registeredAgentsCount: this.state.agents.length,
       activeTasksCount,
       completedJobsCount,
       successfulVerificationsCount,
       liveRecordsCount: liveTasks.length,
       demoRecordsCount: demoTasks.length,
+      uniqueAgentIdAddressesInteracted,
+      uniqueOnChainAddressesVerified: interactingList.length,
       officialAgentIdContract: OFFICIAL_AGENT_ID_CONTRACT_BSC,
       latestBscBlock: latestBscBlock ?? null,
       recentEvents: this.state.events.slice(0, 12),

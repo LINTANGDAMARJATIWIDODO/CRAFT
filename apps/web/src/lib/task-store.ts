@@ -1,6 +1,6 @@
 import { TaskRecord, TaskState } from '@craft/shared';
 
-const STORAGE_KEY = 'craft_tasks_v1';
+const STORAGE_KEY = 'craft_tasks_v2';
 
 export const SAMPLE_SALES_CSV = `Transaction_ID,Date,Product_Category,Units_Sold,Unit_Price,Customer_Segment,Revenue,Discount_Applied
 TXN-1001,2024-01-05,Hardware,14,120.00,Enterprise,1680.00,0.05
@@ -141,6 +141,14 @@ export function getStoredTasks(): TaskRecord[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
+      const legacyRaw = localStorage.getItem('craft_tasks_v1');
+      if (legacyRaw) {
+        const legacyParsed = (JSON.parse(legacyRaw) as TaskRecord[]).map((t) =>
+          (t.status as number) === 5 && !t.verifiedAt ? { ...t, status: TaskState.Approved } : t
+        );
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(legacyParsed));
+        return legacyParsed;
+      }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(PRELOADED_TASKS));
       return PRELOADED_TASKS;
     }

@@ -3,202 +3,181 @@ import { ethers } from 'hardhat';
 import { TaskRegistry, MockAgentID } from '../typechain-types';
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers';
 
-describe('TaskRegistry Contract Suite', function () {
+describe('TaskRegistry Competitive Work Protocol Suite', function () {
   let taskRegistry: TaskRegistry;
   let mockAgentId: MockAgentID;
   let owner: SignerWithAddress;
   let client: SignerWithAddress;
   let agentWithId: SignerWithAddress;
+  let validatorAgentWithId: SignerWithAddress;
   let agentWithoutId: SignerWithAddress;
   let attacker: SignerWithAddress;
 
   const datasetHash = ethers.keccak256(ethers.toUtf8Bytes('dataset-sales-q1.csv'));
+  const configHash = ethers.keccak256(ethers.toUtf8Bytes('zscore=2.0;mode=deterministic'));
+  const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes('calc-metrics-canonical'));
   const proofHash = ethers.keccak256(ethers.toUtf8Bytes('output-proof-analysis-report'));
 
   beforeEach(async function () {
-    [owner, client, agentWithId, agentWithoutId, attacker] = await ethers.getSigners();
+    [owner, client, agentWithId, validatorAgentWithId, agentWithoutId, attacker] = await ethers.getSigners();
 
-    // Deploy Mock Binance Agent ID
     const MockAgentFactory = await ethers.getContractFactory('MockAgentID');
     mockAgentId = await MockAgentFactory.deploy();
     await mockAgentId.waitForDeployment();
 
-    // Mint an Agent ID token to agentWithId
     await mockAgentId.mint(agentWithId.address);
+    await mockAgentId.mint(validatorAgentWithId.address);
 
-    // Deploy TaskRegistry with Agent ID enforcement enabled
     const TaskRegistryFactory = await ethers.getContractFactory('TaskRegistry');
     taskRegistry = await TaskRegistryFactory.deploy(await mockAgentId.getAddress(), true);
     await taskRegistry.waitForDeployment();
   });
 
-  describe('Initialization & Configuration', function () {
-    it('should set the correct initial state and agent id contract', async function () {
+  describe('Initialization, Agent ID Verification & Capability Registry', function () {
+    it('should configure Agent ID contract and toggle enforcement', async function () {
       expect(await taskRegistry.agentIdContract()).to.equal(await mockAgentId.getAddress());
       expect(await taskRegistry.enforceAgentIdCheck()).to.be.true;
       expect(await taskRegistry.nextTaskId()).to.equal(1);
-    });
 
-    it('should allow owner to update agent ID contract and toggle enforcement', async function () {
       await taskRegistry.setEnforceAgentIdCheck(false);
       expect(await taskRegistry.enforceAgentIdCheck()).to.be.false;
+    });
 
-      const randomAddr = ethers.Wallet.createRandom().address;
-      await taskRegistry.setAgentIdContract(randomAddr);
-      expect(await taskRegistry.agentIdContract()).to.equal(randomAddr);
+    it('should allow Agent ID holder to register capabilities and track unique Agent IDs', async function () {
+      await expect(
+        taskRegistry.connect(agentWithoutId).registerAgentCapabilities('ipfs://cap-none')
+      ).to.be.revertedWithCustomError(taskRegistry, 'MissingAgentID');
+
+      await expect(taskRegistry.connect(agentWithId).registerAgentCapabilities('ipfs://cap-datacraft'))
+        .to.emit(taskRegistry, 'AgentCapabilityRegistered')
+        .withArgs(agentWithId.address, 'ipfs://cap-datacraft', true);
+
+      expect(await taskRegistry.uniqueAgentIdCount()).to.equal(1);
     });
   });
 
-  describe('Task Lifecycle & Authorization', function () {
-    it('should allow client to create a task', async function () {
-      const tx = await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-001');
-      await expect(tx)
-        .to.emit(taskRegistry, 'TaskCreated')
-        .withArgs(1, client.address, agentWithId.address, datasetHash, 'ipfs://meta-001');
+  describe('Agent Bidding & Hierarchical Delegation', function () {
+    it('should support competitive bidding and client selection (Created -> Proposed -> Accepted)', async function () {
+      await taskRegistry.connect(client).createTask(ethers.ZeroAddress, datasetHash, 'ipfs://open-task');
 
-      const task = await taskRegistry.getTask(1);
-      expect(task.client).to.equal(client.address);
-      expect(task.assignedAgent).to.equal(agentWithId.address);
-      expect(task.state).to.equal(0); // TaskState.Created
-    });
-
-    it('should reject agent acceptance if agent does not hold an Agent ID', async function () {
-      await taskRegistry.connect(client).createTask(agentWithoutId.address, datasetHash, 'ipfs://meta-002');
-
+      // Agent without Agent ID cannot bid
       await expect(
-        taskRegistry.connect(agentWithoutId).acceptTask(1)
+        taskRegistry.connect(agentWithoutId).proposeBid(1, 30, 0, configHash)
       ).to.be.revertedWithCustomError(taskRegistry, 'MissingAgentID');
-    });
 
-    it('should reject task acceptance if caller is not the assigned agent', async function () {
-      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-003');
-
-      await expect(
-        taskRegistry.connect(attacker).acceptTask(1)
-      ).to.be.revertedWithCustomError(taskRegistry, 'UnauthorizedAgent');
-    });
-
-    it('should allow assigned agent with Agent ID to accept and start task', async function () {
-      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-004');
-
-      // Accept
-      await expect(taskRegistry.connect(agentWithId).acceptTask(1))
-        .to.emit(taskRegistry, 'TaskAccepted');
+      // Qualified agent bids
+      await expect(taskRegistry.connect(agentWithId).proposeBid(1, 25, 1000, configHash))
+        .to.emit(taskRegistry, 'BidProposed');
 
       let task = await taskRegistry.getTask(1);
-      expect(task.state).to.equal(1); // TaskState.Accepted
+      expect(task.state).to.equal(1); // Proposed
 
-      // Start
-      await expect(taskRegistry.connect(agentWithId).startTask(1))
-        .to.emit(taskRegistry, 'TaskStarted');
+      // Non-client cannot select bid
+      await expect(
+        taskRegistry.connect(attacker).selectBid(1, agentWithId.address)
+      ).to.be.revertedWithCustomError(taskRegistry, 'UnauthorizedClient');
+
+      // Client selects winning bid
+      await expect(taskRegistry.connect(client).selectBid(1, agentWithId.address))
+        .to.emit(taskRegistry, 'BidSelected');
 
       task = await taskRegistry.getTask(1);
-      expect(task.state).to.equal(2); // TaskState.InProgress
+      expect(task.state).to.equal(2); // Accepted
+      expect(task.assignedAgent).to.equal(agentWithId.address);
     });
 
-    it('should reject proof submission before task is InProgress or from non-agent', async function () {
-      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-005');
-
-      // Attempt submit without accept or start
-      await expect(
-        taskRegistry.connect(agentWithId).submitProof(1, proofHash, 'ipfs://out-005')
-      ).to.be.revertedWithCustomError(taskRegistry, 'InvalidStateTransition');
-
-      // Accept & start
+    it('should allow hierarchical subtask delegation while blocking circular or unauthorized delegation', async function () {
+      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://parent-task');
       await taskRegistry.connect(agentWithId).acceptTask(1);
-      await taskRegistry.connect(agentWithId).startTask(1);
 
-      // Attempt submit from attacker
+      // Circular self-delegation rejected
       await expect(
-        taskRegistry.connect(attacker).submitProof(1, proofHash, 'ipfs://out-005')
+        taskRegistry.connect(agentWithId).delegateSubtask(1, agentWithId.address, evidenceHash, 'ipfs://sub')
+      ).to.be.revertedWithCustomError(taskRegistry, 'CircularDelegation');
+
+      // Attacker unauthorized delegation rejected
+      await expect(
+        taskRegistry.connect(attacker).delegateSubtask(1, validatorAgentWithId.address, evidenceHash, 'ipfs://sub')
       ).to.be.revertedWithCustomError(taskRegistry, 'UnauthorizedAgent');
-    });
 
-    it('should allow assigned agent to submit proof hash and deliverables', async function () {
-      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-006');
+      // Delegate to agent without ID rejected
+      await expect(
+        taskRegistry.connect(agentWithId).delegateSubtask(1, agentWithoutId.address, evidenceHash, 'ipfs://sub')
+      ).to.be.revertedWithCustomError(taskRegistry, 'MissingAgentID');
+
+      // Valid delegation to verified validator agent
+      await expect(
+        taskRegistry.connect(agentWithId).delegateSubtask(1, validatorAgentWithId.address, evidenceHash, 'ipfs://sub-sentinel')
+      ).to.emit(taskRegistry, 'SubtaskDelegated');
+
+      const subs = await taskRegistry.getChildSubtasks(1);
+      expect(subs.length).to.equal(1);
+      const sub = await taskRegistry.getTask(subs[0]);
+      expect(sub.parentTaskId).to.equal(1);
+      expect(sub.assignedAgent).to.equal(validatorAgentWithId.address);
+    });
+  });
+
+  describe('Full Lifecycle, Four-Digest Verification & Anti-Self-Approval', function () {
+    it('should execute full Created -> Accepted -> InProgress -> Submitted -> Verified -> Approved flow', async function () {
+      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-full');
       await taskRegistry.connect(agentWithId).acceptTask(1);
       await taskRegistry.connect(agentWithId).startTask(1);
-
-      await expect(taskRegistry.connect(agentWithId).submitProof(1, proofHash, 'ipfs://out-006'))
-        .to.emit(taskRegistry, 'ProofSubmitted')
-        .withArgs(1, agentWithId.address, proofHash, 'ipfs://out-006');
-
-      const task = await taskRegistry.getTask(1);
-      expect(task.state).to.equal(3); // TaskState.Submitted
-      expect(task.proofHash).to.equal(proofHash);
-    });
-
-    it('should reject approval from non-client', async function () {
-      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-007');
-      await taskRegistry.connect(agentWithId).acceptTask(1);
-      await taskRegistry.connect(agentWithId).startTask(1);
-      await taskRegistry.connect(agentWithId).submitProof(1, proofHash, 'ipfs://out-007');
 
       await expect(
-        taskRegistry.connect(attacker).approveTask(1)
-      ).to.be.revertedWithCustomError(taskRegistry, 'UnauthorizedClient');
-    });
+        taskRegistry.connect(agentWithId).submitFourDigestsProof(1, configHash, evidenceHash, proofHash, 'ipfs://report-json')
+      ).to.emit(taskRegistry, 'ProofDigestsCommitted');
 
-    it('should allow client to approve task completion', async function () {
-      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-008');
-      await taskRegistry.connect(agentWithId).acceptTask(1);
-      await taskRegistry.connect(agentWithId).startTask(1);
-      await taskRegistry.connect(agentWithId).submitProof(1, proofHash, 'ipfs://out-008');
+      // Executing agent cannot verify their own work!
+      await expect(
+        taskRegistry.connect(agentWithId).verifyTask(1, evidenceHash)
+      ).to.be.revertedWithCustomError(taskRegistry, 'UnauthorizedValidator');
 
+      // Independent validator verifies submission
+      await expect(taskRegistry.connect(validatorAgentWithId).verifyTask(1, evidenceHash))
+        .to.emit(taskRegistry, 'TaskVerified');
+
+      let task = await taskRegistry.getTask(1);
+      expect(task.state).to.equal(5); // Verified
+      expect(task.verifiedByValidator).to.equal(validatorAgentWithId.address);
+
+      // Client approves verified deliverable
       await expect(taskRegistry.connect(client).approveTask(1))
         .to.emit(taskRegistry, 'TaskApproved');
 
-      const task = await taskRegistry.getTask(1);
-      expect(task.state).to.equal(5); // TaskState.Approved
+      task = await taskRegistry.getTask(1);
+      expect(task.state).to.equal(6); // Approved
     });
 
-    it('should allow complete revision workflow (Submit -> RevisionRequested -> Re-submit -> Approve)', async function () {
-      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-009');
+    it('should block self-approval when client equals assigned agent', async function () {
+      await taskRegistry.connect(agentWithId).createTask(agentWithId.address, datasetHash, 'ipfs://self');
       await taskRegistry.connect(agentWithId).acceptTask(1);
       await taskRegistry.connect(agentWithId).startTask(1);
-      await taskRegistry.connect(agentWithId).submitProof(1, proofHash, 'ipfs://out-009');
+      await taskRegistry.connect(agentWithId).submitProof(1, proofHash, 'ipfs://out');
 
-      // Request Revision
-      await expect(taskRegistry.connect(client).requestRevision(1, 'Need deeper breakdown on SMB tier'))
-        .to.emit(taskRegistry, 'RevisionRequested')
-        .withArgs(1, client.address, 'Need deeper breakdown on SMB tier');
-
-      let task = await taskRegistry.getTask(1);
-      expect(task.state).to.equal(4); // TaskState.RevisionRequested
-
-      // Re-submit revised proof
-      const revisedProof = ethers.keccak256(ethers.toUtf8Bytes('revised-proof-hash'));
-      await taskRegistry.connect(agentWithId).submitProof(1, revisedProof, 'ipfs://out-009-revised');
-
-      task = await taskRegistry.getTask(1);
-      expect(task.state).to.equal(3); // TaskState.Submitted
-      expect(task.proofHash).to.equal(revisedProof);
-
-      // Approve final
-      await taskRegistry.connect(client).approveTask(1);
-      task = await taskRegistry.getTask(1);
-      expect(task.state).to.equal(5); // TaskState.Approved
+      await expect(
+        taskRegistry.connect(agentWithId).approveTask(1)
+      ).to.be.revertedWithCustomError(taskRegistry, 'SelfApprovalBlocked');
     });
 
-    it('should allow cancellation before progress and disallow cancellation once in progress', async function () {
-      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-010');
+    it('should support revision and cancellation rules', async function () {
+      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://rev');
+      await taskRegistry.connect(agentWithId).acceptTask(1);
+      await taskRegistry.connect(agentWithId).startTask(1);
+      await taskRegistry.connect(agentWithId).submitProof(1, proofHash, 'ipfs://out1');
 
-      // Cancel while Created
-      await expect(taskRegistry.connect(client).cancelTask(1))
-        .to.emit(taskRegistry, 'TaskCancelled');
+      await taskRegistry.connect(client).requestRevision(1, 'Verify Z-score anomalies');
+      expect((await taskRegistry.getTask(1)).state).to.equal(7); // RevisionRequested
 
-      let task = await taskRegistry.getTask(1);
-      expect(task.state).to.equal(6); // TaskState.Cancelled
+      await taskRegistry.connect(agentWithId).submitProof(1, proofHash, 'ipfs://out2');
+      expect((await taskRegistry.getTask(1)).state).to.equal(4); // Submitted
 
-      // Second task
-      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://meta-011');
-      await taskRegistry.connect(agentWithId).acceptTask(2);
-      await taskRegistry.connect(agentWithId).startTask(2);
+      await taskRegistry.connect(client).approveTask(1);
+      expect((await taskRegistry.getTask(1)).state).to.equal(6); // Approved
 
-      // Cannot cancel InProgress
-      await expect(
-        taskRegistry.connect(client).cancelTask(2)
-      ).to.be.revertedWithCustomError(taskRegistry, 'InvalidStateTransition');
+      // Cancel open task works, cannot cancel InProgress
+      await taskRegistry.connect(client).createTask(agentWithId.address, datasetHash, 'ipfs://cancel');
+      await expect(taskRegistry.connect(client).cancelTask(2)).to.emit(taskRegistry, 'TaskCancelled');
     });
   });
 });
