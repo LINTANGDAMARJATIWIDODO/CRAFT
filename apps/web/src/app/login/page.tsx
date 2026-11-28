@@ -134,42 +134,12 @@ export default function LoginPage() {
 
           {/* Authentication Options */}
           <div className="space-y-4">
-            {/* Option A: Continue with Binance */}
-            <div>
-              <button
-                type="button"
-                onClick={handleBinanceClick}
-                className="w-full relative group p-3.5 rounded-xl border border-subtle bg-charcoal-950 hover:bg-charcoal-850 hover:border-forest-600/50 transition-all text-left flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-[#F3BA2F]/10 border border-[#F3BA2F]/30 flex items-center justify-center text-[#F3BA2F] font-bold text-sm">
-                    B
-                  </div>
-                  <div>
-                    <span className="text-sm font-semibold text-ivory-100 block group-hover:text-ivory-50">
-                      Continue with Binance
-                    </span>
-                    <span className="text-[11px] text-amber-300/80 font-mono block">
-                      {binanceOAuthStatus.configured
-                        ? 'Official Binance OAuth Authorization'
-                        : 'Requires official Binance OAuth authorization'}
-                    </span>
-                  </div>
-                </div>
-                <Info className="w-4 h-4 text-charcoal-400 group-hover:text-forest-300 transition-colors" />
-              </button>
-            </div>
-
-            {/* Divider with 'OR' */}
-            <div className="relative flex items-center justify-center">
-              <div className="w-full border-t border-subtle" />
-              <span className="bg-charcoal-900 px-3 text-[11px] font-mono text-charcoal-400 uppercase tracking-wider relative z-10">
-                OR
-              </span>
-            </div>
-
-            {/* Option B: Direct Binance Web3 Wallet & Agent ID Connect */}
+            {/* Primary Path: Direct Binance Web3 Wallet & Agent ID (No Partner Approval Required) */}
             <div className="space-y-3">
+              <div className="flex items-center justify-between text-[11px] font-mono">
+                <span className="text-emerald-400 uppercase tracking-wider">Primary Auth (Live Now)</span>
+                <span className="text-charcoal-400">No Partner Approval Needed</span>
+              </div>
               {!isConnected ? (
                 <>
                   <Button
@@ -221,10 +191,24 @@ export default function LoginPage() {
                   </form>
 
                   {lastConnectionError && (
-                    <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-800/40 text-[11px] text-amber-200">
-                      {lastConnectionError === 'BINANCE_EXTENSION_NOT_FOUND'
-                        ? 'Binance Web3 Wallet extension not found in browser. Enter your .ai handle above, pick MetaMask/Trust Wallet, or install Binance Web3 Wallet.'
-                        : lastConnectionError}
+                    <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-[11px] text-amber-200 space-y-1.5">
+                      <p>
+                        {lastConnectionError === 'BINANCE_EXTENSION_NOT_FOUND'
+                          ? 'Binance Web3 Wallet extension not detected in this browser. On mobile, open this site inside Binance App -> Web3 Wallet -> Discover, or enter your .ai / 0x address above.'
+                          : lastConnectionError}
+                      </p>
+                      {lastConnectionError === 'BINANCE_EXTENSION_NOT_FOUND' && typeof window !== 'undefined' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(window.location.origin);
+                            setLinkingMessage('CRAFT URL copied! Paste in Binance App -> Web3 -> Discover.');
+                          }}
+                          className="text-[#F3BA2F] hover:underline font-mono inline-block"
+                        >
+                          Copy Live URL for Binance App Browser
+                        </button>
+                      )}
                     </div>
                   )}
                 </>
@@ -272,6 +256,40 @@ export default function LoginPage() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Divider */}
+            <div className="relative flex items-center justify-center">
+              <div className="w-full border-t border-subtle" />
+              <span className="bg-charcoal-900 px-3 text-[10px] font-mono text-charcoal-500 uppercase tracking-wider relative z-10">
+                Optional Ecosystem Partner Layer
+              </span>
+            </div>
+
+            {/* Secondary Path: Continue with Binance OAuth */}
+            <div>
+              <button
+                type="button"
+                onClick={handleBinanceClick}
+                className="w-full relative group p-3.5 rounded-xl border border-subtle bg-charcoal-950 hover:bg-charcoal-850 hover:border-forest-600/50 transition-all text-left flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-[#F3BA2F]/10 border border-[#F3BA2F]/30 flex items-center justify-center text-[#F3BA2F] font-bold text-sm">
+                    B
+                  </div>
+                  <div>
+                    <span className="text-sm font-semibold text-ivory-100 block group-hover:text-ivory-50">
+                      Continue with Binance (OAuth 2.0)
+                    </span>
+                    <span className="text-[11px] text-amber-300/80 font-mono block">
+                      {binanceOAuthStatus.configured
+                        ? 'Official Binance OAuth Authorization'
+                        : 'Close Ecosystem Partners Only (Enroll -> Build -> Go live)'}
+                    </span>
+                  </div>
+                </div>
+                <Info className="w-4 h-4 text-charcoal-400 group-hover:text-forest-300 transition-colors shrink-0" />
+              </button>
             </div>
           </div>
 
@@ -384,15 +402,15 @@ export default function LoginPage() {
               <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/40 text-amber-200 flex items-start gap-2.5">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold block">Ecosystem Partner Approval Required</span>
+                  <span className="font-semibold block">Close Ecosystem Partners Only</span>
                   <span>
-                    Binance restricts OAuth 2.0 third-party client registration to verified ecosystem partners via the Binance Developer Center.
+                    Official Binance OAuth 2.0 is restricted to close ecosystem partners (&ldquo;only provided to close ecosystem partners now&rdquo;) through the 3-step Binance Developer Center process: <strong>Enroll → Build → Go live</strong>.
                   </span>
                 </div>
               </div>
 
               <p>
-                Per hackathon guidelines, CRAFT does not fabricate credentials or simulate a fake login. The full production-grade backend architecture is already implemented and ready:
+                Since partner business approval is gated for hackathon projects, CRAFT keeps <strong>Binance Web3 Wallet &amp; Agent ID (no approval needed)</strong> as the primary access layer while shipping the complete OAuth 2.0 backend ready to enable anytime via hackathon/business partner contact:
               </p>
 
               <div className="p-3 rounded-xl bg-charcoal-950 border border-subtle font-mono text-[11px] space-y-1.5 text-charcoal-300">

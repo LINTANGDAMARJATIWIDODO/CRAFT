@@ -17,7 +17,7 @@ export const Badge: React.FC<BadgeProps> = ({
   className,
   dot = false,
 }) => {
-  const base = 'inline-flex items-center font-mono font-medium rounded-full border transition-colors';
+  const base = 'inline-flex items-center font-mono font-medium rounded-full border transition-colors whitespace-nowrap shrink-0';
 
   const variants = {
     default: 'bg-charcoal-800 text-charcoal-300 border-subtle',
@@ -55,7 +55,7 @@ export const TaskStateBadge: React.FC<{ state: TaskState; className?: string }> 
   return (
     <span
       className={cn(
-        'inline-flex items-center text-xs font-mono font-medium px-2.5 py-0.5 rounded-full border gap-1.5',
+        'inline-flex items-center text-xs font-mono font-medium px-2.5 py-0.5 rounded-full border gap-1.5 whitespace-nowrap shrink-0',
         colors.bg,
         colors.text,
         colors.border,

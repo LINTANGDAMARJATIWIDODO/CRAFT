@@ -64,6 +64,7 @@ export const WalletModal: React.FC<{ isOpen: boolean; onClose: () => void }> = (
   const [linkMsg, setLinkMsg] = useState<string | null>(null);
   const [agentIdInput, setAgentIdInput] = useState('');
   const [isConnectingDirect, setIsConnectingDirect] = useState(false);
+  const [copiedAppUrl, setCopiedAppUrl] = useState(false);
 
   if (!isOpen) return null;
 
@@ -118,42 +119,20 @@ export const WalletModal: React.FC<{ isOpen: boolean; onClose: () => void }> = (
 
         {/* Body */}
         <div className="py-4 space-y-4">
-          {/* Binance Account OAuth Info */}
-          <div className="p-3 bg-charcoal-950/60 rounded-xl border border-subtle flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded bg-[#F3BA2F]/10 border border-[#F3BA2F]/30 flex items-center justify-center text-[#F3BA2F] font-bold text-xs">
-                B
-              </div>
-              <div>
-                <span className="text-ivory-100 font-medium block">
-                  {isBinanceLoggedIn && binanceUser
-                    ? binanceUser.displayName || 'Binance User'
-                    : 'Binance Account (OAuth)'}
-                </span>
-                <span className="text-[11px] text-charcoal-400">
-                  {isBinanceLoggedIn ? 'OAuth Session Active' : 'Partner Access Layer (Optional)'}
-                </span>
-              </div>
-            </div>
-            <Link href="/login" onClick={onClose} className="text-forest-400 hover:underline text-[11px] font-mono">
-              {isBinanceLoggedIn ? 'Manage' : 'Details'}
-            </Link>
-          </div>
-
           {!isConnected ? (
             <div className="space-y-4">
               {/* Primary 1-Click Direct Binance Web3 Wallet */}
               <div className="p-4 rounded-xl bg-[#F3BA2F]/5 border border-[#F3BA2F]/30 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-ivory-100">
-                    Direct Binance Web3 Wallet / Agentic Wallet
+                    Binance Web3 Wallet / Agentic Wallet
                   </span>
                   <Badge variant={binanceWalletDetected ? 'success' : 'bnb'} size="sm">
-                    {binanceWalletDetected ? 'Detected' : 'Extension / App'}
+                    {binanceWalletDetected ? 'Detected' : 'Primary Auth'}
                   </Badge>
                 </div>
                 <p className="text-[11px] text-charcoal-400 leading-relaxed">
-                  Connects directly via <code className="text-ivory-200">window.binancew3w</code> or EIP-6963, switches to BNB Chain (56), and verifies Agent ID NFT <code className="text-ivory-200">0x60b9...022f</code>.
+                  No partner approval needed. Connects directly via <code className="text-ivory-200">window.binancew3w</code> or EIP-6963, switches to BNB Chain (56), and verifies Agent ID NFT <code className="text-ivory-200">0x60b9...022f</code>.
                 </p>
                 <Button
                   variant="primary"
@@ -165,24 +144,40 @@ export const WalletModal: React.FC<{ isOpen: boolean; onClose: () => void }> = (
                 </Button>
               </div>
 
-              {/* Error / Extension Not Installed Guidance */}
+              {/* Error / Extension Not Installed / Mobile Browser Guidance */}
               {lastConnectionError && (
-                <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/40 text-xs text-amber-200 space-y-2">
+                <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/40 text-xs text-amber-200 space-y-2.5">
                   <p>
                     {lastConnectionError === 'BINANCE_EXTENSION_NOT_FOUND'
-                      ? 'Binance Web3 Wallet browser extension was not detected in this browser tab. You can connect directly using your .ai Agent ID / BSC address below, pick Trust Wallet / MetaMask, or install the extension:'
+                      ? 'Binance Web3 Wallet was not injected in this browser tab. On mobile, open this URL inside Binance App -> Wallets -> Web3 -> Discover, enter your .ai / 0x address below, or install the browser extension:'
                       : lastConnectionError}
                   </p>
                   {lastConnectionError === 'BINANCE_EXTENSION_NOT_FOUND' && (
-                    <a
-                      href="https://www.binance.com/en/web3wallet"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-[#F3BA2F] hover:underline font-mono text-[11px]"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      Install Binance Web3 Wallet Extension <ExternalLink className="w-3 h-3" />
-                    </a>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== 'undefined') {
+                            navigator.clipboard?.writeText(window.location.origin);
+                            setCopiedAppUrl(true);
+                            setTimeout(() => setCopiedAppUrl(false), 3000);
+                          }
+                        }}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F3BA2F]/15 border border-[#F3BA2F]/40 text-[#F3BA2F] font-mono text-[11px] hover:bg-[#F3BA2F]/25 transition-colors"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {copiedAppUrl ? 'URL Copied! Paste in Binance App' : 'Copy URL for Binance App'}
+                      </button>
+                      <a
+                        href="https://www.binance.com/en/web3wallet"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-ivory-200 hover:underline font-mono text-[11px]"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Get Binance Wallet <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
                   )}
                 </div>
               )}
@@ -247,6 +242,28 @@ export const WalletModal: React.FC<{ isOpen: boolean; onClose: () => void }> = (
                   </div>
                 </div>
               )}
+
+              {/* Secondary Optional Binance OAuth Partner Layer */}
+              <div className="p-3 bg-charcoal-950/60 rounded-xl border border-subtle flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded bg-[#F3BA2F]/10 border border-[#F3BA2F]/30 flex items-center justify-center text-[#F3BA2F] font-bold text-xs shrink-0">
+                    B
+                  </div>
+                  <div>
+                    <span className="text-ivory-100 font-medium block">
+                      {isBinanceLoggedIn && binanceUser
+                        ? binanceUser.displayName || 'Binance User'
+                        : 'Binance Account (OAuth 2.0)'}
+                    </span>
+                    <span className="text-[11px] text-charcoal-400">
+                      {isBinanceLoggedIn ? 'OAuth Session Active' : 'Close Ecosystem Partners Only'}
+                    </span>
+                  </div>
+                </div>
+                <Link href="/login" onClick={onClose} className="text-forest-400 hover:underline text-[11px] font-mono shrink-0">
+                  {isBinanceLoggedIn ? 'Manage' : 'Partner Info'}
+                </Link>
+              </div>
             </div>
           ) : (
             <div className="space-y-4 text-xs">
