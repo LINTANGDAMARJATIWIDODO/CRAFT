@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "npm --workspace=apps/web run dev",
     "dev:all": "concurrently \"npm --workspace=apps/api run dev\" \"npm --workspace=apps/web run dev\"",
-    "build": "npm --workspace=packages/shared run build && npm --workspace=apps/api run build && npm --workspace=apps/web run build",
+    "build": "node scripts/vercel-build.mjs",
     "test": "npm --workspace=contracts test && npm --workspace=apps/api test",
     "contracts:compile": "npm --workspace=contracts run compile",
     "contracts:test": "npm --workspace=contracts test"
