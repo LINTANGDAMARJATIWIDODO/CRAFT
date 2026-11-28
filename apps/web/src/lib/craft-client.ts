@@ -443,11 +443,11 @@ export async function fetchNetworkStats() {
   }>(`${API_BASE}/api/network/stats`);
 }
 
-export async function registerNetworkParticipant(walletAddress: string) {
+export async function registerNetworkParticipant(walletAddress: string, txHash?: string) {
   const res = await fetch(`${API_BASE}/api/network/register-participant`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ walletAddress }),
+    body: JSON.stringify({ walletAddress, txHash }),
   });
   return res.json();
 }

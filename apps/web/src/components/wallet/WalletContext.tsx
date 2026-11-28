@@ -54,6 +54,7 @@ export interface WalletContextType {
   switchNetwork: (targetChainId: number) => Promise<void>;
   authenticateWithSignature: () => Promise<boolean>;
   verifyAgentIdOnChain: (targetAddress?: string) => Promise<boolean>;
+  getActiveProvider: () => any;
 
   // Judge / Reviewer Demo Pass
   isDemoAgentIdOverride: boolean;
@@ -642,6 +643,10 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const toggleDemoAgentId = () => setIsDemoAgentIdOverride((prev) => !prev);
 
+  const getActiveProvider = () =>
+    activeProviderRef.current ||
+    (typeof window !== 'undefined' ? (window as any).binancew3w?.ethereum || (window as any).ethereum : null);
+
   const initiateBinanceLogin = async (): Promise<{ success: boolean; error?: string; url?: string }> => {
     try {
       const res = await fetch(`${API_BASE}/api/auth/binance/authorize`);
@@ -745,6 +750,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         switchNetwork,
         authenticateWithSignature,
         verifyAgentIdOnChain,
+        getActiveProvider,
         isDemoAgentIdOverride,
         toggleDemoAgentId,
         binanceOAuthStatus,

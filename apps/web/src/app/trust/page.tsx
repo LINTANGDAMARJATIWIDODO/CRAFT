@@ -107,7 +107,7 @@ function TrustCenterContent() {
             </Badge>
           </div>
           <p className="text-sm text-charcoal-400 mt-1">
-            Inspect Task IDs, Dataset Commitments, Report Hashes, Agent Wallets, and live BNB Chain BEP-721 proofs.
+            Inspect Task IDs, Dataset Commitments, Report Hashes, Contract Transactions, and Registered CRAFT Operator Proofs on BNB Chain.
           </p>
         </div>
         <a
@@ -130,7 +130,7 @@ function TrustCenterContent() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search Task ID, Tx Hash (0x...), Wallet Address, Agent ID, Dataset Hash, or Proof Hash..."
+              placeholder="Search Task ID, Tx Hash (0x...), Your Wallet Address, Dataset Hash, or Proof Hash..."
               className="w-full bg-charcoal-950 border border-subtle rounded-xl pl-10 pr-4 py-2.5 text-xs font-mono text-ivory-100 placeholder:text-charcoal-500 focus:outline-none focus:border-forest-500/60"
             />
           </div>

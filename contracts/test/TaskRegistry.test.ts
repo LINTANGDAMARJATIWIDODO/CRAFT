@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import { ethers } from 'hardhat';
+import { anyValue } from '@nomicfoundation/hardhat-chai-matchers/withArgs';
 import { TaskRegistry, MockAgentID } from '../typechain-types';
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers';
 
@@ -53,6 +54,35 @@ describe('TaskRegistry Competitive Work Protocol Suite', function () {
         .withArgs(agentWithId.address, 'ipfs://cap-datacraft', true);
 
       expect(await taskRegistry.uniqueAgentIdCount()).to.equal(1);
+    });
+
+    it('should allow 1-tx Agent ID check-in and atomic 4-digest commitVerifiedWork while counting unique Agent IDs', async function () {
+      await expect(
+        taskRegistry.connect(agentWithoutId).verifyAndCheckInAgentId('analyst')
+      ).to.be.revertedWithCustomError(taskRegistry, 'MissingAgentID');
+
+      await expect(taskRegistry.connect(agentWithId).verifyAndCheckInAgentId('datacraft-quant'))
+        .to.emit(taskRegistry, 'AgentCheckedIn')
+        .withArgs(agentWithId.address, 'datacraft-quant', true, anyValue);
+
+      expect(await taskRegistry.uniqueAgentIdCount()).to.equal(1);
+
+      // Re-checking in same address must NOT double-count uniqueAgentIdCount
+      await taskRegistry.connect(agentWithId).verifyAndCheckInAgentId('datacraft-quant');
+      expect(await taskRegistry.uniqueAgentIdCount()).to.equal(1);
+
+      // Second unique Agent ID holder commits full 4-digest work atomically
+      await expect(
+        taskRegistry
+          .connect(validatorAgentWithId)
+          .commitVerifiedWork(datasetHash, configHash, evidenceHash, proofHash, 'ipfs://council-mission')
+      ).to.emit(taskRegistry, 'WorkProofAnchoredOnChain');
+
+      expect(await taskRegistry.uniqueAgentIdCount()).to.equal(2);
+      expect(await taskRegistry.taskCount()).to.equal(1);
+      const anchored = await taskRegistry.getTask(1);
+      expect(anchored.state).to.equal(6); // Approved
+      expect(anchored.proofHash).to.equal(proofHash);
     });
   });
 

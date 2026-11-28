@@ -47,7 +47,10 @@ export interface CraftPersistedState {
   endpointCalls: Record<string, { calls: number; totalLatencyMs: number; errors: number }>;
   rewardedTaskIds: string[];
   communityFeedback: CommunityFeedbackItem[];
-  uniqueInteractingWallets: Record<string, { hasAgentId: boolean; firstSeenAt: string; contract: string }>;
+  uniqueInteractingWallets: Record<
+    string,
+    { hasAgentId: boolean; firstSeenAt: string; contract: string; confirmedTxHash?: string }
+  >;
 }
 
 const DEFAULT_AGENTS: AgentProfile[] = [

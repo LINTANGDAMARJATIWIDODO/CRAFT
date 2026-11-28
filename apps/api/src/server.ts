@@ -1178,30 +1178,45 @@ app.get('/api/network/stats', async (req: Request, res: Response) => {
 });
 
 app.post('/api/network/register-participant', async (req: Request, res: Response) => {
-  const { walletAddress } = req.body || {};
+  const { walletAddress, txHash } = req.body || {};
   if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
     return res.status(400).json({ error: 'Valid BNB Smart Chain wallet address required.' });
   }
   const onChain = await trustRpcVerifier.verifyWalletAgentIdOnChain(walletAddress);
+  let txCheck = null;
+  if (txHash && /^0x[a-fA-F0-9]{64}$/.test(String(txHash))) {
+    txCheck = await trustRpcVerifier.inspectTxOnBsc(String(txHash));
+  }
+
   const lower = walletAddress.toLowerCase();
   if (!craftStore.state.uniqueInteractingWallets[lower]) {
     craftStore.state.uniqueInteractingWallets[lower] = {
       hasAgentId: onChain.hasAgentId,
       firstSeenAt: new Date().toISOString(),
       contract: OFFICIAL_AGENT_ID_CONTRACT_BSC,
+      confirmedTxHash: txCheck?.found && txCheck.status === 'CONFIRMED' ? txCheck.txHash : undefined,
     };
   } else {
     craftStore.state.uniqueInteractingWallets[lower].hasAgentId = onChain.hasAgentId;
+    if (txCheck?.found && txCheck.status === 'CONFIRMED') {
+      craftStore.state.uniqueInteractingWallets[lower].confirmedTxHash = txCheck.txHash;
+    }
   }
   craftStore.addAuditLog({
     category: 'AUTH',
     action: 'NETWORK_PARTICIPANT_CHECKED',
     actor: walletAddress,
-    details: `BSC Mainnet balanceOf=${onChain.balance} (hasAgentId=${onChain.hasAgentId})`,
+    details: `BSC Mainnet balanceOf=${onChain.balance} (hasAgentId=${onChain.hasAgentId})${
+      txCheck?.found ? ` • TX=${txCheck.txHash.slice(0, 14)}...` : ''
+    }`,
     severity: 'info',
   });
   craftStore.save();
-  res.json({ onChain, uniqueOnChainAddressesVerified: Object.keys(craftStore.state.uniqueInteractingWallets).length });
+  res.json({
+    onChain,
+    txCheck,
+    uniqueOnChainAddressesVerified: Object.keys(craftStore.state.uniqueInteractingWallets).length,
+  });
 });
 
 app.get('/api/network/feedback', (req: Request, res: Response) => {
@@ -1229,24 +1244,35 @@ app.post('/api/network/feedback', (req: Request, res: Response) => {
 app.get('/api/readiness', async (req: Request, res: Response) => {
   const latestBlock = await trustRpcVerifier.getLatestBlockNumber();
   const metrics = craftStore.getMetricsSnapshot(latestBlock);
+  const registryAddress =
+    process.env.TASK_REGISTRY_ADDRESS || process.env.NEXT_PUBLIC_TASK_REGISTRY_ADDRESS || '';
+  const isRegistryDeployed = /^0x[a-fA-F0-9]{40}$/.test(registryAddress);
+
   const criteria = [
     {
       criterion: 'Agent ID Integration (Official BSC 0x60b9...022f)',
       weightPercent: 30,
       implementedEvidence: [
         `Live viem balanceOf verification on BSC Mainnet via ${metrics.officialAgentIdContract}`,
-        'Smart contract ERC-721 IERC721 gating for registerAgentCapabilities, proposeBid & delegateSubtask',
-        'Account-linking EIP-191 nonce challenge verification separate from Binance OAuth layer',
+        'Smart contract ERC-721 gating: verifyAndCheckInAgentId (1-tx check-in), commitVerifiedWork, registerAgentCapabilities, proposeBid & delegateSubtask',
+        'Real Binance Web3 Wallet (window.binancew3w / EIP-6963) + manual transaction signing flow in /mission, /tasks/[id]/review, and /network',
+        ...(isRegistryDeployed ? [`Live TaskRegistry Contract configured: ${registryAddress}`] : []),
       ],
       testEvidence: [
-        'contracts/test/TaskRegistry.test.ts: 7 passing Hardhat tests incl. Agent ID capability & delegation gates',
+        'contracts/test/TaskRegistry.test.ts: 8 passing Hardhat tests incl. atomic commitVerifiedWork & verifyAndCheckInAgentId',
         `Live BSC RPC reachability confirmed: latestBlock=${latestBlock ?? 'unreachable'}`,
       ],
       remainingGaps: [
-        'TaskRegistry.sol requires funded testnet/mainnet deployer private key to execute live BscScan deployment & verification',
-        'Default platform seed agents currently do not hold a live minted SPACE ID NFT until real agent operator wallets mint or register',
+        ...(isRegistryDeployed
+          ? []
+          : [
+              'Deploy TaskRegistry.sol to BSC Mainnet & verify on BscScan, then set TASK_REGISTRY_ADDRESS + NEXT_PUBLIC_TASK_REGISTRY_ADDRESS',
+            ]),
+        `Reach 30+ unique interacting Agent ID addresses on BSC Mainnet TaskRegistry (currently ${
+          metrics.uniqueAgentIdAddressesInteracted ?? 0
+        } off-chain/RPC verified)`,
       ],
-      measuredStatus: 'Strong',
+      measuredStatus: isRegistryDeployed ? 'Strong' : 'Partial',
     },
     {
       criterion: 'Practicality and Feasibility',

@@ -46,8 +46,12 @@ async function main() {
 
   const taskRegistryAddress = await taskRegistry.getAddress();
   console.log(`\nTaskRegistry successfully deployed to: ${taskRegistryAddress}`);
-  console.log(`\nVerification command for BscScan:`);
-  console.log(`npx hardhat verify --network ${network.name} ${taskRegistryAddress} "${agentIdAddress}" ${enforceCheck}\n`);
+  console.log(`\nNext 1 — Verify Source Code on BscScan (Mandatory for Hackathon Eligibility):`);
+  console.log(`npx hardhat verify --network ${network.name} ${taskRegistryAddress} "${agentIdAddress}" ${enforceCheck}`);
+  console.log(`\nNext 2 — Add these Environment Variables to .env & Vercel Project Settings:`);
+  console.log(`TASK_REGISTRY_ADDRESS=${taskRegistryAddress}`);
+  console.log(`NEXT_PUBLIC_TASK_REGISTRY_ADDRESS=${taskRegistryAddress}`);
+  console.log(`NEXT_PUBLIC_TASK_REGISTRY_CHAIN_ID=${network.config.chainId || 56}\n`);
 }
 
 main().catch((error) => {

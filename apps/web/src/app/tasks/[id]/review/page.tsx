@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/ToastContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { getTaskById, updateTask } from '@/lib/task-store';
 import { API_BASE } from '@/lib/craft-client';
+import { commitWorkOnBsc, isTaskRegistryConfigured } from '@/lib/onchain-contract';
 import { TaskRecord, TaskState } from '@craft/shared';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -30,7 +31,7 @@ import {
 export default function ResultReviewPage() {
   const params = useParams();
   const taskId = (params?.id as string) || '';
-  const { isConnected, address, authenticateWithSignature } = useWallet();
+  const { isConnected, address, connectionMode, authenticateWithSignature, getActiveProvider } = useWallet();
   const { notify } = useToast();
 
   const [task, setTask] = useState<TaskRecord | null>(null);
@@ -79,14 +80,35 @@ export default function ResultReviewPage() {
     setIsApproving(true);
     try {
       let signed = false;
-      if (isConnected) {
-        signed = await authenticateWithSignature();
+      let onChainReceipt: { txHash: string; blockNumber: number; chainId: number; contractAddress: string } | null = null;
+
+      if (isConnected && connectionMode === 'extension') {
+        if (isTaskRegistryConfigured() && address) {
+          onChainReceipt = await commitWorkOnBsc({
+            provider: getActiveProvider(),
+            account: address,
+            datasetHash: task.datasetHash,
+            configHash: task.configHash,
+            evidenceHash: task.calculationsHash,
+            proofHash: report.proofHash,
+            objective: task.title,
+          });
+          signed = true;
+        } else {
+          signed = await authenticateWithSignature();
+        }
       }
 
       const approveRes = await fetch(`${API_BASE}/api/tasks/${task.id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callerAddress: address || task.clientAddress }),
+        body: JSON.stringify({
+          callerAddress: address || task.clientAddress,
+          onChainTxHash: onChainReceipt?.txHash,
+          onChainBlockNumber: onChainReceipt?.blockNumber,
+          chainId: onChainReceipt?.chainId,
+          contractAddress: onChainReceipt?.contractAddress,
+        }),
       }).catch(() => null);
 
       if (approveRes && !approveRes.ok) {
@@ -98,11 +120,21 @@ export default function ResultReviewPage() {
         status: TaskState.Approved,
         approvedAt: new Date().toISOString(),
         isDemo: false,
-        verificationTier: 'local_verified_digest',
+        onChainTxHash: onChainReceipt?.txHash || task.onChainTxHash,
+        onChainBlockNumber: onChainReceipt?.blockNumber || task.onChainBlockNumber,
+        onChainChainId: onChainReceipt?.chainId || task.onChainChainId,
+        contractAddress: onChainReceipt?.contractAddress || task.contractAddress,
+        verificationTier: onChainReceipt
+          ? onChainReceipt.chainId === 56
+            ? 'mainnet_anchored'
+            : 'testnet_anchored'
+          : 'local_verified_digest',
       });
 
       if (updated) setTask(updated);
-      const msg = signed
+      const msg = onChainReceipt
+        ? `Anchored on BNB Chain tx ${onChainReceipt.txHash.slice(0, 12)}... (Block #${onChainReceipt.blockNumber})!`
+        : signed
         ? `Client signature verified & work order finalized! Proof digest sealed & Agent Passport updated.`
         : `Work order approved! Proof digest sealed & Agent Passport updated.`;
       setSuccessMessage(msg);

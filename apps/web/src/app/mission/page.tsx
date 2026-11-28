@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { API_BASE, fetchMissionEvents, saveLocalCouncilRun } from '@/lib/craft-client';
+import { commitWorkOnBsc, isTaskRegistryConfigured } from '@/lib/onchain-contract';
 import { SAMPLE_SALES_CSV, getStoredTasks, saveStoredTasks, updateTask } from '@/lib/task-store';
 import { parseCsvContent, profileDataset, computeDeterministicCalculations } from '@/lib/dataset-analyzer';
 import { computeSha256 } from '@/lib/utils';
@@ -39,7 +40,7 @@ import {
 } from 'lucide-react';
 
 export default function LiveMissionPage() {
-  const { isConnected, address, authenticateWithSignature } = useWallet();
+  const { isConnected, address, connectionMode, authenticateWithSignature, getActiveProvider } = useWallet();
   const { notify } = useToast();
 
   const [fileName, setFileName] = useState<string>('enterprise_q1_sales_sample.csv');
@@ -324,10 +325,30 @@ export default function LiveMissionPage() {
     if (!taskRecord) return;
     setIsApproving(true);
     try {
-      // Optional cryptographic sign-off if wallet connected
       let signed = false;
-      if (isConnected) {
-        signed = await authenticateWithSignature();
+      let onChainReceipt: {
+        txHash: string;
+        blockNumber: number;
+        chainId: number;
+        contractAddress: string;
+        bscScanUrl: string;
+      } | null = null;
+
+      if (isConnected && connectionMode === 'extension') {
+        if (isTaskRegistryConfigured() && address) {
+          onChainReceipt = await commitWorkOnBsc({
+            provider: getActiveProvider(),
+            account: address,
+            datasetHash: taskRecord.datasetHash,
+            configHash: taskRecord.configHash,
+            evidenceHash: taskRecord.calculationsHash,
+            proofHash: taskRecord.outputProofHash,
+            objective: taskRecord.title,
+          });
+          signed = true;
+        } else {
+          signed = await authenticateWithSignature();
+        }
       }
 
       // Record approval on backend (enforcing anti-self-approval + deduplication)
@@ -336,6 +357,10 @@ export default function LiveMissionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           callerAddress: address || taskRecord.clientAddress,
+          onChainTxHash: onChainReceipt?.txHash,
+          onChainBlockNumber: onChainReceipt?.blockNumber,
+          chainId: onChainReceipt?.chainId,
+          contractAddress: onChainReceipt?.contractAddress,
         }),
       }).catch(() => null);
 
@@ -352,20 +377,38 @@ export default function LiveMissionPage() {
       const updated = updateTask(taskRecord.id, {
         status: TaskState.Approved,
         approvedAt: new Date().toISOString(),
-        verificationTier: 'local_verified_digest',
+        onChainTxHash: onChainReceipt?.txHash,
+        onChainBlockNumber: onChainReceipt?.blockNumber,
+        onChainChainId: onChainReceipt?.chainId,
+        contractAddress: onChainReceipt?.contractAddress,
+        verificationTier: onChainReceipt
+          ? onChainReceipt.chainId === 56
+            ? 'mainnet_anchored'
+            : 'testnet_anchored'
+          : 'local_verified_digest',
       });
 
       if (updated) setTaskRecord(updated);
       setMissionStage(4);
       setTxSignStatus(
-        signed
+        onChainReceipt
+          ? `Confirmed On-Chain tx ${onChainReceipt.txHash.slice(0, 14)}... (Block #${onChainReceipt.blockNumber}) & Agent Passport updated.`
+          : signed
           ? 'Client cryptographic signature verified & Agent Passport metrics updated.'
           : 'Client approval finalized & Agent Passport performance metrics updated.'
       );
       notify({
-        title: 'Mission Approved & Passport Updated',
-        description: 'Deliverable sealed and recorded in Agent Passport & Trust Center.',
+        title: onChainReceipt ? 'Anchored On BNB Chain!' : 'Mission Approved & Passport Updated',
+        description: onChainReceipt
+          ? `Verified tx ${onChainReceipt.txHash.slice(0, 16)}... recorded on BNB Chain.`
+          : 'Deliverable sealed and recorded in Agent Passport & Trust Center.',
         variant: 'success',
+      });
+    } catch (err: any) {
+      notify({
+        title: 'Approval / Transaction Cancelled',
+        description: err?.message || 'Wallet rejected or failed to confirm on-chain transaction.',
+        variant: 'error',
       });
     } finally {
       setIsApproving(false);
@@ -674,9 +717,21 @@ export default function LiveMissionPage() {
                     </div>
 
                     {txSignStatus && (
-                      <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-700/40 text-emerald-300 text-xs flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 shrink-0" />
-                        <span>{txSignStatus}</span>
+                      <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-700/40 text-emerald-300 text-xs flex flex-wrap items-center justify-between gap-2">
+                        <span className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 shrink-0" />
+                          <span>{txSignStatus}</span>
+                        </span>
+                        {taskRecord?.onChainTxHash && (
+                          <a
+                            href={`https://${taskRecord.onChainChainId === 97 ? 'testnet.' : ''}bscscan.com/tx/${taskRecord.onChainTxHash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 font-mono text-[#F3BA2F] hover:underline"
+                          >
+                            View on BscScan <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
                       </div>
                     )}
 
